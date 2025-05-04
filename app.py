@@ -48,13 +48,24 @@ def get_travel_details(origin, destination):
     except:
         return None, None
 
-# Generate a JS map config for frontend to use with Google Maps JS API
-def generate_map_data(origin, destination):
-    return {
-        "origin": origin,
-        "destination": destination,
-        "api_key": API_KEY
+# Generate Static Map URL for safe embedding
+def generate_static_map_url(origin, destination):
+    base_url = "https://maps.googleapis.com/maps/api/staticmap"
+    params = {
+        "size": "600x300",
+        "markers": [
+            f"color:green|label:A|{origin}",
+            f"color:red|label:B|{destination}"
+        ],
+        "path": f"color:0x0000ff|weight:5|{origin}|{destination}",
+        "key": API_KEY
     }
+
+    # Join multiple markers and path safely
+    marker_str = "&".join([f"markers={requests.utils.quote(m)}" for m in params["markers"]])
+    path_str = f"path={requests.utils.quote(params['path'])}"
+
+    return f"{base_url}?size={params['size']}&{marker_str}&{path_str}&key={params['key']}"
 
 # Calculate price using provided settings
 def calculate_price(duration_min, distance_km, start_cost, km_cost, hourly_cost):
@@ -76,7 +87,7 @@ def index():
     origin = ""
     destination = ""
     calculations = []
-    map_data = None
+    map_url = None
 
     if request.method == 'POST':
         origin = request.form['origin']
@@ -92,17 +103,18 @@ def index():
                     "total_cost": cost
                 })
 
-            map_data = generate_map_data(origin, destination)
+            map_url = generate_static_map_url(origin, destination)
 
             result = {
                 "origin": origin,
                 "destination": destination,
                 "duration": format_duration(duration),  # Format to "Hh Mmin"
                 "distance": round(distance),  # Round only for display
-                "calculations": calculations
+                "calculations": calculations,
+                "map_url": map_url
             }
 
-    return render_template('index.html', result=result, origin=origin, destination=destination, map_data=map_data)
+    return render_template('index.html', result=result, origin=origin, destination=destination)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)

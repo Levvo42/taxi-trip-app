@@ -16,8 +16,6 @@
             width: 100%;
             padding: 8px;
             margin-bottom: 10px;
-            background-color: #ffffff;
-            color: #000000;
             border: 1px solid #ccc;
             font-size: 16px;
         }
@@ -59,64 +57,14 @@
             background-color: #f0f0f0;
         }
 
-        #map {
-            height: 300px;
+        img.map-preview {
             width: 100%;
+            max-width: 600px;
             margin-top: 20px;
             border: 1px solid #ccc;
         }
-
-        .pac-container {
-            z-index: 10000 !important;
-        }
     </style>
-
-    <!-- Google Maps with Places Autocomplete -->
-    <script src="https://maps.googleapis.com/maps/api/js?key={{ map_data.api_key }}&libraries=places" defer></script>
-
-    <script>
-        function initMap() {
-            const originInput = document.getElementById("origin");
-            const destInput = document.getElementById("destination");
-
-            new google.maps.places.Autocomplete(originInput);
-            new google.maps.places.Autocomplete(destInput);
-
-            {% if map_data %}
-            const map = new google.maps.Map(document.getElementById("map"), {
-                zoom: 10,
-                center: { lat: 63.4, lng: 13.1 }
-            });
-
-            const directionsService = new google.maps.DirectionsService();
-            const directionsRenderer = new google.maps.DirectionsRenderer();
-            directionsRenderer.setMap(map);
-
-            directionsService.route(
-                {
-                    origin: "{{ map_data.origin }}",
-                    destination: "{{ map_data.destination }}",
-                    travelMode: google.maps.TravelMode.DRIVING
-                },
-                (response, status) => {
-                    if (status === "OK") {
-                        directionsRenderer.setDirections(response);
-                    } else {
-                        alert("Could not display route: " + status);
-                    }
-                }
-            );
-            {% endif %}
-        }
-
-        window.onload = function () {
-            if (typeof google === 'object' && typeof google.maps === 'object') {
-                initMap();
-            }
-        };
-    </script>
 </head>
-
 <body>
     <h2>🚖 Taxi Trip Calculator</h2>
 
@@ -126,31 +74,31 @@
         <button type="submit">Calculate</button>
     </form>
 
-    {% if map_data %}
-    <div id="map"></div>
-    {% endif %}
-
     {% if result %}
-    <div class="result-box">
-        <strong>From:</strong> {{ result.origin }}<br>
-        <strong>To:</strong> {{ result.destination }}<br>
-        <strong>Distance:</strong> {{ result.distance }} km<br>
-        <strong>Duration:</strong> {{ result.duration }}
-    </div>
+        {% if result.map_url %}
+        <img src="{{ result.map_url }}" alt="Route Map" class="map-preview">
+        {% endif %}
 
-    <h3>Estimated Cost per Tariff</h3>
-    <table>
-        <tr>
-            <th>Tariff</th>
-            <th>Total Cost (kr)</th>
-        </tr>
-        {% for item in result.calculations %}
-        <tr>
-            <td>{{ item.tariff }}</td>
-            <td><strong>{{ item.total_cost }}</strong></td>
-        </tr>
-        {% endfor %}
-    </table>
+        <div class="result-box">
+            <strong>From:</strong> {{ result.origin }}<br>
+            <strong>To:</strong> {{ result.destination }}<br>
+            <strong>Distance:</strong> {{ result.distance }} km<br>
+            <strong>Duration:</strong> {{ result.duration }}
+        </div>
+
+        <h3>Estimated Cost per Tariff</h3>
+        <table>
+            <tr>
+                <th>Tariff</th>
+                <th>Total Cost (kr)</th>
+            </tr>
+            {% for item in result.calculations %}
+            <tr>
+                <td>{{ item.tariff }}</td>
+                <td><strong>{{ item.total_cost }}</strong></td>
+            </tr>
+            {% endfor %}
+        </table>
     {% endif %}
 </body>
 </html>
