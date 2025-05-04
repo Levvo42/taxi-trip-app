@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: taxi-trip-calculator
+    env: python
+    buildCommand: ""
+    startCommand: python app.py
+    plan: free
+    envVars:
+      - key: GOOGLE_API_KEY
+        value: AIzaSyDHuHycQ3ZJQYZ_APqY3iqYnMXz4tcnx1E
