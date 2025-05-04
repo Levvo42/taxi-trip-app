@@ -2,7 +2,6 @@ import os
 import requests
 from flask import Flask, request, render_template
 from dotenv import load_dotenv
-import math
 
 # Load environment variables
 load_dotenv()
@@ -19,7 +18,9 @@ TARIFFS = {
     "Taxa 5 (Storbils Rabatt)": {"start": 68, "km": 24.3, "hour": 612},
 }
 
+
 # Fetch travel details from Google Routes API
+
 def get_travel_details(origin, destination):
     url = "https://routes.googleapis.com/directions/v2:computeRoutes"
     headers = {
@@ -45,10 +46,13 @@ def get_travel_details(origin, destination):
         distance_km = round(distance_m / 1000, 2)
 
         return duration_min, distance_km
-    except:
+    except (KeyError, IndexError, ValueError) as e:
+        print("Route API parsing error:", e)
         return None, None
 
+
 # Generate Static Map URL for safe embedding
+
 def generate_static_map_url(origin, destination):
     base_url = "https://maps.googleapis.com/maps/api/staticmap"
     params = {
@@ -67,27 +71,32 @@ def generate_static_map_url(origin, destination):
 
     return f"{base_url}?size={params['size']}&{marker_str}&{path_str}&key={params['key']}"
 
+
 # Calculate price using provided settings
+
 def calculate_price(duration_min, distance_km, start_cost, km_cost, hourly_cost):
     per_km_cost = km_cost * distance_km
     per_hour_cost = (duration_min / 60) * hourly_cost
     total_cost = round(start_cost + per_km_cost + per_hour_cost)  # round to nearest whole kr
     return total_cost
 
+
 # Format minutes as "Xh Ymin"
+
 def format_duration(minutes):
     hours = int(minutes) // 60
     mins = int(minutes) % 60
     return f"{hours}h {mins}min" if hours else f"{mins}min"
 
+
 # Web interface route
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     result = None
     origin = ""
     destination = ""
     calculations = []
-    map_url = None
 
     if request.method == 'POST':
         origin = request.form['origin']
@@ -103,18 +112,17 @@ def index():
                     "total_cost": cost
                 })
 
-            map_url = generate_static_map_url(origin, destination)
-
             result = {
                 "origin": origin,
                 "destination": destination,
                 "duration": format_duration(duration),  # Format to "Hh Mmin"
                 "distance": round(distance),  # Round only for display
                 "calculations": calculations,
-                "map_url": map_url
+                "map_url": generate_static_map_url(origin, destination)
             }
 
-    return render_template('index.html', result=result, origin=origin, destination=destination)
+    return render_template('index.html', result=result, origin=origin, destination=destination, api_key=API_KEY)
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)
