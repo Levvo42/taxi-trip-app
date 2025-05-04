@@ -1,104 +1,125 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Taxi Trip Calculator</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            padding: 20px;
-            max-width: 600px;
-            margin: auto;
-            background-color: #fff;
-            color: #000;
-        }
+  <title>Taxi Trip Calculator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      max-width: 600px;
+      margin: auto;
+      background-color: #fff;
+      color: #000;
+    }
 
-        input[type="text"] {
-            width: 100%;
-            padding: 8px;
-            margin-bottom: 10px;
-            border: 1px solid #ccc;
-            font-size: 16px;
-        }
+    input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 10px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+    }
 
-        button {
-            width: 100%;
-            padding: 10px;
-            background-color: #007BFF;
-            color: white;
-            border: none;
-            font-size: 16px;
-            cursor: pointer;
-            margin-top: 10px;
-        }
+    button {
+      width: 100%;
+      padding: 10px;
+      background-color: #007BFF;
+      color: white;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
 
-        button:hover {
-            background-color: #0056b3;
-        }
+    .result-box {
+      margin-top: 20px;
+      background: #f8f8f8;
+      padding: 10px;
+    }
 
-        .result-box {
-            margin-top: 20px;
-            background: #f8f8f8;
-            padding: 10px;
-        }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: center;
+    }
 
-        th, td {
-            border: 1px solid #ccc;
-            padding: 8px;
-            text-align: center;
-        }
+    th {
+      background-color: #f0f0f0;
+    }
 
-        th {
-            background-color: #f0f0f0;
-        }
+    img.map-preview {
+      width: 100%;
+      max-width: 600px;
+      margin-top: 20px;
+      border: 1px solid #ccc;
+    }
 
-        img.map-preview {
-            width: 100%;
-            max-width: 600px;
-            margin-top: 20px;
-            border: 1px solid #ccc;
-        }
-    </style>
+    .pac-container {
+      z-index: 10000 !important;
+    }
+  </style>
+
+  <!-- ✅ This is the working combo you had before deployment -->
+  <script src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&libraries=places" defer></script>
+
+  <script>
+    function initAutocomplete() {
+      const originInput = document.getElementById("origin");
+      const destInput = document.getElementById("destination");
+
+      new google.maps.places.Autocomplete(originInput);
+      new google.maps.places.Autocomplete(destInput);
+    }
+
+    window.onload = function () {
+      // Wait for Google to load, then init
+      if (typeof google === 'object' && typeof google.maps === 'object') {
+        initAutocomplete();
+      }
+    };
+  </script>
 </head>
+
 <body>
-    <h2>🚖 Taxi Trip Calculator</h2>
+  <h2>🚖 Taxi Trip Calculator</h2>
 
-    <form method="POST">
-        <input type="text" id="origin" name="origin" required placeholder="Start location" value="{{ origin }}">
-        <input type="text" id="destination" name="destination" required placeholder="End location" value="{{ destination }}">
-        <button type="submit">Calculate</button>
-    </form>
+  <form method="POST">
+    <input type="text" id="origin" name="origin" required placeholder="Start location" value="{{ origin }}">
+    <input type="text" id="destination" name="destination" required placeholder="End location" value="{{ destination }}">
+    <button type="submit">Calculate</button>
+  </form>
 
-    {% if result %}
-        {% if result.map_url %}
-        <img src="{{ result.map_url }}" alt="Route Map" class="map-preview">
-        {% endif %}
-
-        <div class="result-box">
-            <strong>From:</strong> {{ result.origin }}<br>
-            <strong>To:</strong> {{ result.destination }}<br>
-            <strong>Distance:</strong> {{ result.distance }} km<br>
-            <strong>Duration:</strong> {{ result.duration }}
-        </div>
-
-        <h3>Estimated Cost per Tariff</h3>
-        <table>
-            <tr>
-                <th>Tariff</th>
-                <th>Total Cost (kr)</th>
-            </tr>
-            {% for item in result.calculations %}
-            <tr>
-                <td>{{ item.tariff }}</td>
-                <td><strong>{{ item.total_cost }}</strong></td>
-            </tr>
-            {% endfor %}
-        </table>
+  {% if result %}
+    {% if result.map_url %}
+      <img src="{{ result.map_url }}" alt="Route Map" class="map-preview">
     {% endif %}
+
+    <div class="result-box">
+      <strong>From:</strong> {{ result.origin }}<br>
+      <strong>To:</strong> {{ result.destination }}<br>
+      <strong>Distance:</strong> {{ result.distance }} km<br>
+      <strong>Duration:</strong> {{ result.duration }}
+    </div>
+
+    <h3>Estimated Cost per Tariff</h3>
+    <table>
+      <tr>
+        <th>Tariff</th>
+        <th>Total Cost (kr)</th>
+      </tr>
+      {% for item in result.calculations %}
+      <tr>
+        <td>{{ item.tariff }}</td>
+        <td><strong>{{ item.total_cost }}</strong></td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% endif %}
 </body>
 </html>
