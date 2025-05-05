@@ -65,20 +65,26 @@
     }
   </style>
 
-  <!-- ✅ This is the working combo you had before deployment -->
-  <script src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&libraries=places" defer></script>
+  <!-- Load ONLY Places API (for autocomplete) -->
+  <script
+    src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&libraries=places"
+    defer>
+  </script>
 
   <script>
     function initAutocomplete() {
-      const originInput = document.getElementById("origin");
-      const destInput = document.getElementById("destination");
+      try {
+        const originInput = document.getElementById("origin");
+        const destInput = document.getElementById("destination");
 
-      new google.maps.places.Autocomplete(originInput);
-      new google.maps.places.Autocomplete(destInput);
+        new google.maps.places.Autocomplete(originInput);
+        new google.maps.places.Autocomplete(destInput);
+      } catch (e) {
+        console.warn("Autocomplete init failed", e);
+      }
     }
 
     window.onload = function () {
-      // Wait for Google to load, then init
       if (typeof google === 'object' && typeof google.maps === 'object') {
         initAutocomplete();
       }
@@ -97,7 +103,7 @@
 
   {% if result %}
     {% if result.map_url %}
-      <img src="{{ result.map_url }}" alt="Route Map" class="map-preview">
+    <img src="{{ result.map_url }}" alt="Route Map" class="map-preview">
     {% endif %}
 
     <div class="result-box">
