@@ -1,15 +1,46 @@
 <!DOCTYPE html>
-<html>
+<html lang="sv">
 <head>
   <title>Taxi Trip Calculator</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      padding: 20px;
       max-width: 600px;
       margin: auto;
-      background-color: #fff;
-      color: #000;
+      padding: 20px;
+    }
+
+    h2 {
+      margin-bottom: 10px;
+    }
+
+    .shortcuts {
+      margin: 20px 0;
+    }
+
+    .shortcut-btn {
+      display: block;
+      width: 100%;
+      margin-bottom: 10px;
+      padding: 10px;
+      background-color: #28a745;
+      color: white;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+
+    .shortcut-btn:hover {
+      background-color: #218838;
+    }
+
+    .form-section {
+      background: #f8f8f8;
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      margin-bottom: 20px;
     }
 
     input[type="text"] {
@@ -20,7 +51,7 @@
       font-size: 16px;
     }
 
-    button {
+    button[type="submit"] {
       width: 100%;
       padding: 10px;
       background-color: #007BFF;
@@ -28,13 +59,23 @@
       border: none;
       font-size: 16px;
       cursor: pointer;
-      margin-top: 10px;
+    }
+
+    button[type="submit"]:hover {
+      background-color: #0056b3;
     }
 
     .result-box {
       margin-top: 20px;
-      background: #f8f8f8;
-      padding: 10px;
+      background: #f0f0f0;
+      padding: 15px;
+      border-radius: 8px;
+    }
+
+    img.map-preview {
+      width: 100%;
+      margin-top: 20px;
+      border: 1px solid #ccc;
     }
 
     table {
@@ -50,22 +91,19 @@
     }
 
     th {
-      background-color: #f0f0f0;
+      background-color: #e0e0e0;
     }
 
-    img.map-preview {
-      width: 100%;
-      max-width: 600px;
-      margin-top: 20px;
-      border: 1px solid #ccc;
-    }
-
-    .pac-container {
-      z-index: 10000 !important;
+    .settings-link {
+      display: inline-block;
+      margin-top: 10px;
+      text-decoration: none;
+      color: #007BFF;
+      font-weight: bold;
     }
   </style>
 
-  <!-- Load ONLY Places API (for autocomplete) -->
+  <!-- ✅ Google Places API for autocomplete -->
   <script
     src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&libraries=places"
     defer>
@@ -73,14 +111,14 @@
 
   <script>
     function initAutocomplete() {
-      try {
-        const originInput = document.getElementById("origin");
-        const destInput = document.getElementById("destination");
+      const originInput = document.getElementById("origin");
+      const destInput = document.getElementById("destination");
 
+      if (originInput) {
         new google.maps.places.Autocomplete(originInput);
+      }
+      if (destInput) {
         new google.maps.places.Autocomplete(destInput);
-      } catch (e) {
-        console.warn("Autocomplete init failed", e);
       }
     }
 
@@ -95,29 +133,50 @@
 <body>
   <h2>🚖 Taxi Trip Calculator</h2>
 
-  <form method="POST">
-    <input type="text" id="origin" name="origin" required placeholder="Start location" value="{{ origin }}">
-    <input type="text" id="destination" name="destination" required placeholder="End location" value="{{ destination }}">
-    <button type="submit">Calculate</button>
-  </form>
+  <a class="settings-link" href="{{ url_for('settings') }}">⚙️ Inställningar</a>
+
+  {% if predefined %}
+  <div class="shortcuts">
+    <h3>Snabbval – fasta priser</h3>
+    {% for name, price in predefined.items() %}
+      <form method="POST">
+        <input type="hidden" name="origin" value="Valfri plats">
+        <input type="hidden" name="destination" value="{{ name }}">
+        <button class="shortcut-btn" type="submit">{{ name }} – {{ price }} kr</button>
+      </form>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="form-section">
+    <form method="POST">
+      <label for="origin">Från:</label>
+      <input type="text" id="origin" name="origin" placeholder="Startplats" value="{{ origin }}" required>
+
+      <label for="destination">Till:</label>
+      <input type="text" id="destination" name="destination" placeholder="Destination" value="{{ destination }}" required>
+
+      <button type="submit">Beräkna pris</button>
+    </form>
+  </div>
 
   {% if result %}
     {% if result.map_url %}
-    <img src="{{ result.map_url }}" alt="Route Map" class="map-preview">
+    <img src="{{ result.map_url }}" alt="Karta" class="map-preview">
     {% endif %}
 
     <div class="result-box">
-      <strong>From:</strong> {{ result.origin }}<br>
-      <strong>To:</strong> {{ result.destination }}<br>
-      <strong>Distance:</strong> {{ result.distance }} km<br>
-      <strong>Duration:</strong> {{ result.duration }}
+      <strong>Från:</strong> {{ result.origin }}<br>
+      <strong>Till:</strong> {{ result.destination }}<br>
+      <strong>Avstånd:</strong> {{ result.distance }} km<br>
+      <strong>Restid:</strong> {{ result.duration }}
     </div>
 
-    <h3>Estimated Cost per Tariff</h3>
+    <h3>Pris per taxa</h3>
     <table>
       <tr>
-        <th>Tariff</th>
-        <th>Total Cost (kr)</th>
+        <th>Taxa</th>
+        <th>Totalpris (kr)</th>
       </tr>
       {% for item in result.calculations %}
       <tr>

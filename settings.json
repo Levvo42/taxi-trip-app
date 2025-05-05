@@ -1,0 +1,19 @@
+{
+  "tariffs": {
+    "Taxa 1 (Småbil)": {
+      "start": 59.0,
+      "km": 22.1,
+      "hour": 660.0
+    },
+    "Taxa 2 (Storbils)": {
+      "start": 79.0,
+      "km": 28.6,
+      "hour": 720.0
+    }
+  },
+  "predefined": {
+    "Östersund Flygplats": 1600,
+    "Copperhill Staffhouse - Åre Torg": 280,
+    "Staff Housing - Brattland": 325
+  }
+}

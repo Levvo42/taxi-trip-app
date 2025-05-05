@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <title>Settings – Tariffs & Fixed Prices</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 700px;
+      margin: auto;
+      padding: 20px;
+    }
+
+    h2 {
+      margin-top: 30px;
+    }
+
+    form {
+      background: #f9f9f9;
+      padding: 20px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      margin-bottom: 30px;
+    }
+
+    label {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+
+    input[type="number"],
+    input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      font-size: 16px;
+      margin-top: 5px;
+      box-sizing: border-box;
+    }
+
+    input[type="checkbox"] {
+      transform: scale(1.2);
+      margin-right: 5px;
+    }
+
+    button {
+      margin-top: 20px;
+      width: 100%;
+      padding: 10px;
+      background-color: #007BFF;
+      color: white;
+      font-size: 16px;
+      border: none;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    .back-link {
+      display: inline-block;
+      margin-top: 20px;
+      text-decoration: none;
+      color: #007BFF;
+    }
+
+    fieldset {
+      margin-bottom: 25px;
+      border: 1px solid #ccc;
+      padding: 15px;
+      border-radius: 6px;
+    }
+
+    legend {
+      font-weight: bold;
+      padding: 0 5px;
+    }
+  </style>
+</head>
+<body>
+  <h2>🛠️ Prisinställningar</h2>
+
+  <form method="POST">
+    <h3>🚗 Taxor</h3>
+    {% for tariff, values in tariffs.items() %}
+    <fieldset>
+      <legend>{{ tariff }}</legend>
+      <label for="{{ tariff }}_start">Startkostnad (kr)</label>
+      <input type="number" step="0.01" name="{{ tariff }}_start" value="{{ values.start }}" required>
+
+      <label for="{{ tariff }}_km">Kostnad per km (kr)</label>
+      <input type="number" step="0.01" name="{{ tariff }}_km" value="{{ values.km }}" required>
+
+      <label for="{{ tariff }}_hour">Kostnad per timme (kr)</label>
+      <input type="number" step="0.01" name="{{ tariff }}_hour" value="{{ values.hour }}" required>
+    </fieldset>
+    {% endfor %}
+
+    <h3>📍 Fördefinierade platser (fasta priser)</h3>
+    {% for name, price in predefined.items() %}
+    <fieldset>
+      <legend>Plats {{ loop.index }}</legend>
+
+      <label>Namn</label>
+      <input type="text" name="pre_name_{{ loop.index }}" value="{{ name }}" required>
+
+      <label>Pris (kr)</label>
+      <input type="number" step="1" name="pre_price_{{ loop.index }}" value="{{ price }}" required>
+
+      <label style="margin-top: 15px;">
+        <input type="checkbox" name="pre_delete_{{ loop.index }}">
+        Ta bort denna plats
+      </label>
+    </fieldset>
+    {% endfor %}
+
+    <fieldset>
+      <legend>➕ Lägg till ny plats</legend>
+      <label>Namn</label>
+      <input type="text" name="new_pre_name" placeholder="T.ex. Åre Station">
+
+      <label>Pris (kr)</label>
+      <input type="number" step="1" name="new_pre_price" placeholder="T.ex. 395">
+    </fieldset>
+
+    <button type="submit">💾 Spara ändringar</button>
+  </form>
+
+  <a href="{{ url_for('index') }}" class="back-link">← Tillbaka</a>
+</body>
+</html>
