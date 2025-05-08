@@ -76,6 +76,22 @@
       padding: 0 5px;
     }
   </style>
+  <script src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&libraries=places" defer></script>
+
+    <script>
+      function initAutocomplete() {
+        const inputs = document.querySelectorAll('.autocomplete');
+        inputs.forEach(input => {
+          new google.maps.places.Autocomplete(input);
+        });
+      }
+
+      window.onload = function () {
+        if (typeof google === 'object' && typeof google.maps === 'object') {
+          initAutocomplete();
+        }
+      };
+    </script>
 </head>
 <body>
   <h2>🛠️ Prisinställningar</h2>
@@ -96,32 +112,51 @@
     </fieldset>
     {% endfor %}
 
-    <h3>📍 Fördefinierade platser (fasta priser)</h3>
-    {% for name, price in predefined.items() %}
-    <fieldset>
-      <legend>Plats {{ loop.index }}</legend>
+    <h3>📍 Fördefinierade körningar (fasta priser)</h3>
+{% for route in predefined %}
+<fieldset>
+  <legend>{{ route.title or 'Plats ' ~ loop.index }}</legend>
 
-      <label>Namn</label>
-      <input type="text" name="pre_name_{{ loop.index }}" value="{{ name }}" required>
+  <label>Titel</label>
+  <input type="text" name="pre_title_{{ loop.index }}" value="{{ route.title }}" required>
 
-      <label>Pris (kr)</label>
-      <input type="number" step="1" name="pre_price_{{ loop.index }}" value="{{ price }}" required>
+  <label>Från</label>
+  <input type="text" name="pre_from_{{ loop.index }}" value="{{ route.from }}" class="autocomplete">
 
-      <label style="margin-top: 15px;">
-        <input type="checkbox" name="pre_delete_{{ loop.index }}">
-        Ta bort denna plats
-      </label>
-    </fieldset>
-    {% endfor %}
+  <label>Till</label>
+  <input type="text" name="pre_to_{{ loop.index }}" value="{{ route.to }}" class="autocomplete">
 
-    <fieldset>
-      <legend>➕ Lägg till ny plats</legend>
-      <label>Namn</label>
-      <input type="text" name="new_pre_name" placeholder="T.ex. Åre Station">
+  <label>Pris småbil (Taxa 1)</label>
+  <input type="number" name="pre_small_{{ loop.index }}" value="{{ route.price_small or '' }}">
 
-      <label>Pris (kr)</label>
-      <input type="number" step="1" name="new_pre_price" placeholder="T.ex. 395">
-    </fieldset>
+  <label>Pris storbil (Taxa 2)</label>
+  <input type="number" name="pre_large_{{ loop.index }}" value="{{ route.price_large or '' }}">
+
+  <label style="margin-top: 10px;">
+    <input type="checkbox" name="pre_delete_{{ loop.index }}"> Ta bort denna körning
+  </label>
+</fieldset>
+{% endfor %}
+
+<fieldset>
+  <legend>➕ Lägg till ny körning</legend>
+
+  <label>Titel</label>
+  <input type="text" name="new_pre_title">
+
+  <label>Från</label>
+  <input type="text" name="new_pre_from" class="autocomplete">
+
+  <label>Till</label>
+  <input type="text" name="new_pre_to" class="autocomplete">
+
+  <label>Pris småbil (Taxa 1)</label>
+  <input type="number" name="new_pre_small">
+
+  <label>Pris storbil (Taxa 2)</label>
+  <input type="number" name="new_pre_large">
+</fieldset>
+
 
     <button type="submit">💾 Spara ändringar</button>
   </form>

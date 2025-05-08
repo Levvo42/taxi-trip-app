@@ -11,9 +11,20 @@
       "hour": 720.0
     }
   },
-  "predefined": {
-    "Östersund Flygplats": 1600,
-    "Copperhill Staffhouse - Åre Torg": 280,
-    "Staff Housing - Brattland": 325
-  }
+  "predefined": [
+    {
+      "title": "Östersund Flygplats",
+      "from": "Åre, Sweden",
+      "to": "Östersund Åre Airport, Frösön, Sweden",
+      "price_small": 1600,
+      "price_large": 1900
+    },
+    {
+      "title": "Copperhill Staff-house",
+      "from": "Copperhillvägen 56, Åre, Sweden",
+      "to": "Åre Torg, Årevägen, Åre, Sweden",
+      "price_small": 280,
+      "price_large": 320
+    }
+  ]
 }

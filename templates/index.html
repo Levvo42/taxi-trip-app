@@ -108,6 +108,36 @@
     src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&libraries=places"
     defer>
   </script>
+        <script>
+          function useCurrentLocation() {
+            if (!navigator.geolocation) {
+              alert("Din webbläsare stödjer inte platstjänster.");
+              return;
+            }
+
+            navigator.geolocation.getCurrentPosition(async function (position) {
+              const lat = position.coords.latitude;
+              const lng = position.coords.longitude;
+              const apiKey = "{{ api_key }}";
+              const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`;
+
+              try {
+                const response = await fetch(url);
+                const data = await response.json();
+                if (data.status === "OK") {
+                  const address = data.results[0].formatted_address;
+                  document.getElementById("origin").value = address;
+                } else {
+                  alert("Kunde inte hitta adress.");
+                }
+              } catch (err) {
+                alert("Ett fel uppstod vid hämtning av plats.");
+              }
+            }, function (error) {
+              alert("Kunde inte hämta plats: " + error.message);
+            });
+          }
+        </script>
 
   <script>
     function initAutocomplete() {
@@ -135,14 +165,22 @@
 
   <a class="settings-link" href="{{ url_for('settings') }}">⚙️ Inställningar</a>
 
-  {% if predefined %}
+  {% if predefined_routes %}
   <div class="shortcuts">
     <h3>Snabbval – fasta priser</h3>
-    {% for name, price in predefined.items() %}
+    {% for route in predefined_routes %}
       <form method="POST">
-        <input type="hidden" name="origin" value="Valfri plats">
-        <input type="hidden" name="destination" value="{{ name }}">
-        <button class="shortcut-btn" type="submit">{{ name }} – {{ price }} kr</button>
+        <input type="hidden" name="origin" value="{{ route.from }}">
+        <input type="hidden" name="destination" value="{{ route.to }}">
+        <input type="hidden" name="fixed_price" value="1">
+        <input type="hidden" name="title" value="{{ route.title }}">
+        {% if route.price_small %}
+          <input type="hidden" name="price_small" value="{{ route.price_small }}">
+        {% endif %}
+        {% if route.price_large %}
+          <input type="hidden" name="price_large" value="{{ route.price_large }}">
+        {% endif %}
+        <button class="shortcut-btn" type="submit">{{ route.title }}</button>
       </form>
     {% endfor %}
   </div>
@@ -151,7 +189,10 @@
   <div class="form-section">
     <form method="POST">
       <label for="origin">Från:</label>
-      <input type="text" id="origin" name="origin" placeholder="Startplats" value="{{ origin }}" required>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="origin" name="origin" placeholder="Startplats" value="{{ origin }}" required style="flex: 1;">
+          <button type="button" onclick="useCurrentLocation()" title="Använd nuvarande plats">📍</button>
+        </div>
 
       <label for="destination">Till:</label>
       <input type="text" id="destination" name="destination" placeholder="Destination" value="{{ destination }}" required>
