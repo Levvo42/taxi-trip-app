@@ -153,7 +153,7 @@ def index():
                     "origin": origin,
                     "destination": destination,
                     "duration": format_duration(duration),
-                    "distance": round(distance),
+                    "distance": round(distance, 1),
                     "calculations": calculations,
                     "map_url": map_url
                 }
