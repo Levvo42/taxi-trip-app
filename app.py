@@ -53,46 +53,45 @@ def calculate_derived_tariffs():
     }
 
 def get_travel_details(origin, destination):
-    url = "https://routes.googleapis.com/directions/v2:computeRoutes"
-    headers = {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': API_KEY,
-        'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters'
+    url = "https://maps.googleapis.com/maps/api/directions/json"
+    params = {
+        "origin": origin,
+        "destination": destination,
+        "mode": "driving",
+        "key": API_KEY
     }
-    body = {
-        "origin": {"address": origin},
-        "destination": {"address": destination},
-        "travelMode": "DRIVE"
-    }
-
-    response = requests.post(url, headers=headers, json=body)
-    result = response.json()
 
     try:
-        route = result['routes'][0]
-        duration_sec = int(route['duration'].rstrip('s'))
-        distance_m = int(route['distanceMeters'])
-        duration_min = duration_sec / 60
-        distance_km = distance_m / 1000
-        return duration_min, distance_km
-    except (KeyError, IndexError, ValueError) as e:
-        print("Route API parsing error:", e)
+        response = requests.get(url, params=params)
+        data = response.json()
+
+        if data['status'] == "OK":
+            route = data['routes'][0]['legs'][0]
+            duration_sec = route['duration']['value']  # in seconds
+            distance_m = route['distance']['value']    # in meters
+
+            duration_min = duration_sec / 60
+            distance_km = distance_m / 1000
+            return duration_min, distance_km
+        else:
+            print("Directions API error:", data['status'])
+            return None, None
+    except Exception as e:
+        print("Error fetching directions:", e)
         return None, None
 
 def generate_static_map_url(origin, destination):
-    base_url = "https://maps.googleapis.com/maps/api/staticmap"
+    # OBS! Vi använder en vanlig rutt med embed istället för statisk bild
+    base_url = "https://www.google.com/maps/embed/v1/directions"
     params = {
-        "size": "600x300",
-        "markers": [
-            f"color:green|label:A|{origin}",
-            f"color:red|label:B|{destination}"
-        ],
-        "path": f"color:0x0000ff|weight:5|{origin}|{destination}",
-        "key": API_KEY
+        "origin": origin,
+        "destination": destination,
+        "key": API_KEY,
+        "mode": "driving"
     }
-    marker_str = "&".join([f"markers={quote(m)}" for m in params["markers"]])
-    path_str = f"path={quote(params['path'])}"
-    return f"{base_url}?size={params['size']}&{marker_str}&{path_str}&key={params['key']}"
+    query = "&".join([f"{k}={quote(str(v))}" for k, v in params.items()])
+    return f"{base_url}?{query}", None, None  # Vi returnerar fortfarande 3 värden, för kompatibilitet
+
 
 def calculate_price(duration_min, distance_km, start_cost, km_cost, hourly_cost):
     per_km_cost = km_cost * distance_km
@@ -128,14 +127,18 @@ def index():
             if price_large:
                 calculations.append({"tariff": "Taxa 2 (Storbils)", "total_cost": int(price_large)})
 
+            duration, distance = get_travel_details(origin, destination)
+            map_url, _, _ = generate_static_map_url(origin, destination)
+
             result = {
                 "origin": origin,
                 "destination": destination,
-                "duration": "Fast pris",
-                "distance": "–",
+                "duration": format_duration(duration) if duration else "–",
+                "distance": round(distance) if distance else "–",
                 "calculations": calculations,
-                "map_url": generate_static_map_url(origin, destination)
+                "map_url": map_url
             }
+
         else:
             duration, distance = get_travel_details(origin, destination)
             if duration is not None and distance is not None:
@@ -145,13 +148,14 @@ def index():
                         "tariff": name,
                         "total_cost": cost
                     })
+                map_url, _, _ = generate_static_map_url(origin, destination)
                 result = {
                     "origin": origin,
                     "destination": destination,
                     "duration": format_duration(duration),
                     "distance": round(distance),
                     "calculations": calculations,
-                    "map_url": generate_static_map_url(origin, destination)
+                    "map_url": map_url
                 }
 
     return render_template(

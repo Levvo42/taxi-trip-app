@@ -1,166 +1,97 @@
 <!DOCTYPE html>
 <html lang="sv">
 <head>
-  <title>Settings – Tariffs & Fixed Prices</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 700px;
-      margin: auto;
-      padding: 20px;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    h2 {
-      margin-top: 30px;
-    }
+    <title>Inställningar</title>
 
-    form {
-      background: #f9f9f9;
-      padding: 20px;
-      border-radius: 8px;
-      border: 1px solid #ddd;
-      margin-bottom: 30px;
-    }
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 20px; }
+        input, button { padding: 8px; margin: 5px 0; width: 100%; }
+        label { font-weight: bold; margin-top: 10px; display: block; }
+        .route-box { border: 1px solid #ccc; padding: 10px; margin-top: 10px; }
 
-    label {
-      display: block;
-      margin-top: 10px;
-      font-weight: bold;
-    }
-
-    input[type="number"],
-    input[type="text"] {
-      width: 100%;
-      padding: 8px;
-      font-size: 16px;
-      margin-top: 5px;
-      box-sizing: border-box;
-    }
-
-    input[type="checkbox"] {
-      transform: scale(1.2);
-      margin-right: 5px;
-    }
-
-    button {
-      margin-top: 20px;
-      width: 100%;
-      padding: 10px;
-      background-color: #007BFF;
-      color: white;
-      font-size: 16px;
-      border: none;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background-color: #0056b3;
-    }
-
-    .back-link {
-      display: inline-block;
-      margin-top: 20px;
-      text-decoration: none;
-      color: #007BFF;
-    }
-
-    fieldset {
-      margin-bottom: 25px;
-      border: 1px solid #ccc;
-      padding: 15px;
-      border-radius: 6px;
-    }
-
-    legend {
-      font-weight: bold;
-      padding: 0 5px;
-    }
-  </style>
-  <script src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&libraries=places" defer></script>
-
+      @media (max-width: 600px) {
+            body {
+              padding: 10px;
+              font-size: 16px;
+            }
+            input, button {
+              font-size: 16px;
+            }
+            button {
+            padding: 14px;
+            font-size: 18px;
+            }
+            .route-box {
+              padding: 8px;
+            }
+          }
+    </style>
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&libraries=places" defer></script>
     <script>
-      function initAutocomplete() {
-        const inputs = document.querySelectorAll('.autocomplete');
-        inputs.forEach(input => {
-          new google.maps.places.Autocomplete(input);
-        });
-      }
+        function initAutocomplete() {
+            const fromFields = document.querySelectorAll("input.from-location");
+            const toFields = document.querySelectorAll("input.to-location");
 
-      window.onload = function () {
-        if (typeof google === 'object' && typeof google.maps === 'object') {
-          initAutocomplete();
+            fromFields.forEach(field => new google.maps.places.Autocomplete(field, { types: ["geocode"] }));
+            toFields.forEach(field => new google.maps.places.Autocomplete(field, { types: ["geocode"] }));
         }
-      };
+
+        window.onload = function () {
+            if (typeof initAutocomplete === 'function') {
+                initAutocomplete();
+            }
+        };
     </script>
 </head>
 <body>
-  <h2>🛠️ Prisinställningar</h2>
+    <h2>⚙️ Inställningar</h2>
+    <form method="POST">
+        <h3>Taxor</h3>
+        {% for key, val in tariffs.items() %}
+            <fieldset>
+                <legend>{{ key }}</legend>
+                <label>Startpris</label>
+                <input type="number" step="0.1" name="{{ key }}_start" value="{{ val.start }}">
+                <label>Kilometerpris</label>
+                <input type="number" step="0.1" name="{{ key }}_km" value="{{ val.km }}">
+                <label>Timpris</label>
+                <input type="number" step="1" name="{{ key }}_hour" value="{{ val.hour }}">
+            </fieldset>
+        {% endfor %}
 
-  <form method="POST">
-    <h3>🚗 Taxor</h3>
-    {% for tariff, values in tariffs.items() %}
-    <fieldset>
-      <legend>{{ tariff }}</legend>
-      <label for="{{ tariff }}_start">Startkostnad (kr)</label>
-      <input type="number" step="0.01" name="{{ tariff }}_start" value="{{ values.start }}" required>
+        <h3>Fasta Priser</h3>
+        {% for route in predefined %}
+        <div class="route-box">
+            <label>Titel</label>
+            <input type="text" name="pre_title_{{ loop.index }}" value="{{ route.title }}">
+            <label>Från</label>
+            <input type="text" name="pre_from_{{ loop.index }}" class="from-location" value="{{ route.from }}">
+            <label>Till</label>
+            <input type="text" name="pre_to_{{ loop.index }}" class="to-location" value="{{ route.to }}">
+            <label>Pris Småbil</label>
+            <input type="number" name="pre_small_{{ loop.index }}" value="{{ route.price_small }}">
+            <label>Pris Storbils</label>
+            <input type="number" name="pre_large_{{ loop.index }}" value="{{ route.price_large }}">
+            <label><input type="checkbox" name="pre_delete_{{ loop.index }}"> Ta bort</label>
+        </div>
+        {% endfor %}
 
-      <label for="{{ tariff }}_km">Kostnad per km (kr)</label>
-      <input type="number" step="0.01" name="{{ tariff }}_km" value="{{ values.km }}" required>
+        <h3>Lägg till ny fastpris</h3>
+        <label>Titel</label>
+        <input type="text" name="new_pre_title">
+        <label>Från</label>
+        <input type="text" name="new_pre_from" class="from-location">
+        <label>Till</label>
+        <input type="text" name="new_pre_to" class="to-location">
+        <label>Pris Småbil</label>
+        <input type="number" name="new_pre_small">
+        <label>Pris Storbils</label>
+        <input type="number" name="new_pre_large">
 
-      <label for="{{ tariff }}_hour">Kostnad per timme (kr)</label>
-      <input type="number" step="0.01" name="{{ tariff }}_hour" value="{{ values.hour }}" required>
-    </fieldset>
-    {% endfor %}
-
-    <h3>📍 Fördefinierade körningar (fasta priser)</h3>
-{% for route in predefined %}
-<fieldset>
-  <legend>{{ route.title or 'Plats ' ~ loop.index }}</legend>
-
-  <label>Titel</label>
-  <input type="text" name="pre_title_{{ loop.index }}" value="{{ route.title }}" required>
-
-  <label>Från</label>
-  <input type="text" name="pre_from_{{ loop.index }}" value="{{ route.from }}" class="autocomplete">
-
-  <label>Till</label>
-  <input type="text" name="pre_to_{{ loop.index }}" value="{{ route.to }}" class="autocomplete">
-
-  <label>Pris småbil (Taxa 1)</label>
-  <input type="number" name="pre_small_{{ loop.index }}" value="{{ route.price_small or '' }}">
-
-  <label>Pris storbil (Taxa 2)</label>
-  <input type="number" name="pre_large_{{ loop.index }}" value="{{ route.price_large or '' }}">
-
-  <label style="margin-top: 10px;">
-    <input type="checkbox" name="pre_delete_{{ loop.index }}"> Ta bort denna körning
-  </label>
-</fieldset>
-{% endfor %}
-
-<fieldset>
-  <legend>➕ Lägg till ny körning</legend>
-
-  <label>Titel</label>
-  <input type="text" name="new_pre_title">
-
-  <label>Från</label>
-  <input type="text" name="new_pre_from" class="autocomplete">
-
-  <label>Till</label>
-  <input type="text" name="new_pre_to" class="autocomplete">
-
-  <label>Pris småbil (Taxa 1)</label>
-  <input type="number" name="new_pre_small">
-
-  <label>Pris storbil (Taxa 2)</label>
-  <input type="number" name="new_pre_large">
-</fieldset>
-
-
-    <button type="submit">💾 Spara ändringar</button>
-  </form>
-
-  <a href="{{ url_for('index') }}" class="back-link">← Tillbaka</a>
+        <button type="submit">💾 Spara</button>
+    </form>
 </body>
 </html>
