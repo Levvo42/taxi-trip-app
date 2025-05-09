@@ -134,7 +134,7 @@ def index():
                 "origin": origin,
                 "destination": destination,
                 "duration": format_duration(duration) if duration else "–",
-                "distance": round(distance) if distance else "–",
+                "distance": round(distance, 1) if distance else "–",
                 "calculations": calculations,
                 "map_url": map_url
             }
