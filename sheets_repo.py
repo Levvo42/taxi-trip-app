@@ -1,3 +1,4 @@
+import json
 import os, uuid
 from dotenv import load_dotenv
 import gspread
@@ -10,11 +11,26 @@ SCOPES = [
 
 def _open_sheet():
     load_dotenv()
-    key_path = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    # 1) Inline JSON? (om du hellre vill lägga hela JSON:en som env-variabel)
+    info = os.getenv("GOOGLE_SERVICE_ACCOUNT_INFO")
+    if info:
+        creds = Credentials.from_service_account_info(json.loads(info), scopes=SCOPES)
+    else:
+        # 2) Filväg via env
+        key_path = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+        # 2a) Fallback till Render's standard path om inget satt
+        if not key_path:
+            default_secret = "/etc/secrets/topptaxi-sa.json"
+            if os.path.exists(default_secret):
+                key_path = default_secret
+        if not key_path or not os.path.exists(key_path):
+            raise FileNotFoundError(f"Service account JSON not found at: {key_path or '(unset)'}")
+        creds = Credentials.from_service_account_file(key_path, scopes=SCOPES)
+
     spreadsheet_id = os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID")
-    creds = Credentials.from_service_account_file(key_path, scopes=SCOPES)
     gc = gspread.authorize(creds)
     return gc.open_by_key(spreadsheet_id)
+
 
 def _ws(sh, name):
     try:
