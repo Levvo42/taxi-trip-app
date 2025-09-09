@@ -1,97 +1,386 @@
 <!DOCTYPE html>
 <html lang="sv">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <title>Inställningar</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Inställningar</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #222;
+      --muted: #666;
+      --brand: #0d6efd;
+      --ok: #198754;
+      --warn: #fd7e14;
+      --err: #dc3545;
+      --card: #f7f7f9;
+      --border: #ddd;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      max-width: 1000px; margin: 0 auto; padding: 20px;
+      background: var(--bg); color: var(--fg);
+    }
+    h1, h2, h3 { margin: 18px 0 12px; }
+    .grid { display: grid; gap: 16px; }
+    .cols-2 { grid-template-columns: 1fr 1fr; }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      padding: 16px; border-radius: 8px;
+    }
+    label { font-size: 14px; color: var(--muted); display: block; margin: 6px 0 4px; }
+    input[type="text"], input[type="number"], select {
+      width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 15px;
+      background: #fff;
+    }
+    button {
+      display: inline-block; padding: 10px 14px; border: 1px solid var(--brand);
+      background: var(--brand); color: #fff; border-radius: 6px; font-size: 15px; cursor: pointer;
+    }
+    button.secondary { background: transparent; color: var(--brand); }
+    button.full { width: 100%; }
+    .row { display: flex; gap: 12px; }
+    .row > * { flex: 1; }
+    .price-entry {
+      background: #f0f4ff; border: 1px solid #d8e3ff; border-left: 4px solid var(--brand);
+      padding: 12px; border-radius: 6px; margin: 10px 0;
+    }
+    .muted { color: var(--muted); font-size: 13px; }
+    .flash { padding: 10px 12px; border-radius: 6px; margin: 10px 0; border: 1px solid transparent; }
+    .flash.success { background: #e9f7ef; border-color: #bde5c8; color: #13653f; }
+    .flash.warning { background: #fff4e6; border-color: #ffd6a2; color: #7a4d0b; }
+    .flash.danger  { background: #fdecea; border-color: #f5c6cb; color: #842029; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+    th { background: #fafafa; }
+    .section-title { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    form.inline { display:inline; }
+  </style>
 
-    <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 20px; }
-        input, button { padding: 8px; margin: 5px 0; width: 100%; }
-        label { font-weight: bold; margin-top: 10px; display: block; }
-        .route-box { border: 1px solid #ccc; padding: 10px; margin-top: 10px; }
+  <!-- Google Places med callback när allt är laddat -->
+  <script src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&libraries=places&callback=initPlaces" async defer></script>
 
-      @media (max-width: 600px) {
-            body {
-              padding: 10px;
-              font-size: 16px;
-            }
-            input, button {
-              font-size: 16px;
-            }
-            button {
-            padding: 14px;
-            font-size: 18px;
-            }
-            .route-box {
-              padding: 8px;
-            }
-          }
-    </style>
-    <script src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&libraries=places" defer></script>
-    <script>
-        function initAutocomplete() {
-            const fromFields = document.querySelectorAll("input.from-location");
-            const toFields = document.querySelectorAll("input.to-location");
+  <script>
+    // Initiera Autocomplete på alla .autocomplete i ett givet root
+    function initAutocompleteScope(root = document) {
+      const mapNameToHidden = {
+        'place_address': 'place_place_id',
+        'route_from_address': 'route_from_place_id',
+        'route_to_address': 'route_to_place_id'
+      };
 
-            fromFields.forEach(field => new google.maps.places.Autocomplete(field, { types: ["geocode"] }));
-            toFields.forEach(field => new google.maps.places.Autocomplete(field, { types: ["geocode"] }));
+      const inputs = root.querySelectorAll('.autocomplete');
+      inputs.forEach(input => {
+        try {
+          const ac = new google.maps.places.Autocomplete(input, {
+            fields: ['place_id','formatted_address','geometry'],
+            types: ['geocode'],
+            componentRestrictions: { country: ['se','no'] }
+          });
+
+          ac.addListener('place_changed', () => {
+            const place = ac.getPlace() || {};
+            if (place.formatted_address) input.value = place.formatted_address;
+
+            const hidId = mapNameToHidden[input.name];
+            if (hidId) {
+              const hid = document.getElementById(hidId);
+              if (hid) hid.value = place.place_id || '';
+            }
+          });
+
+          // Om man börjar skriva igen – nolla place_id
+          input.addEventListener('input', () => {
+            const hidId = mapNameToHidden[input.name];
+            if (hidId) {
+              const hid = document.getElementById(hidId);
+              if (hid) hid.value = '';
+            }
+          });
+        } catch (e) {
+          console.warn('Autocomplete init failed for', input.name, e);
         }
+      });
+    }
 
-        window.onload = function () {
-            if (typeof initAutocomplete === 'function') {
-                initAutocomplete();
-            }
-        };
-    </script>
+    // Called av Google-scriptets &callback när libbet är redo
+    function initPlaces() {
+      initAutocompleteScope(document);
+    }
+
+    // Lägg till ny priskategori-rad i "Lägg till rutt"-formuläret
+    function addPriceRow(ev) {
+      ev.preventDefault();
+      const wrap = document.getElementById('price-rows');
+      const div = document.createElement('div');
+      div.className = 'price-entry';
+      div.innerHTML = `
+        <label>Etikett</label>
+        <input type="text" name="price_label[]" placeholder="t.ex. 1–4 personer" />
+        <div class="row">
+          <div>
+            <label>Min</label>
+            <input type="number" name="price_min[]" step="1" min="0" />
+          </div>
+          <div>
+            <label>Max (valfritt)</label>
+            <input type="number" name="price_max[]" step="1" min="0" />
+          </div>
+          <div>
+            <label>Total (kr)</label>
+            <input type="number" name="price_total[]" step="1" min="0" />
+          </div>
+          <div>
+            <label>Pris/Person (kr)</label>
+            <input type="number" name="price_ppp[]" step="1" min="0" />
+          </div>
+        </div>`;
+      wrap.appendChild(div);
+    }
+  </script>
 </head>
 <body>
-    <h2>⚙️ Inställningar</h2>
-    <form method="POST">
-        <h3>Taxor</h3>
-        {% for key, val in tariffs.items() %}
-            <fieldset>
-                <legend>{{ key }}</legend>
-                <label>Startpris</label>
-                <input type="number" step="0.1" name="{{ key }}_start" value="{{ val.start }}">
-                <label>Kilometerpris</label>
-                <input type="number" step="0.1" name="{{ key }}_km" value="{{ val.km }}">
-                <label>Timpris</label>
-                <input type="number" step="1" name="{{ key }}_hour" value="{{ val.hour }}">
-            </fieldset>
-        {% endfor %}
 
-        <h3>Fasta Priser</h3>
-        {% for route in predefined %}
-        <div class="route-box">
-            <label>Titel</label>
-            <input type="text" name="pre_title_{{ loop.index }}" value="{{ route.title }}">
-            <label>Från</label>
-            <input type="text" name="pre_from_{{ loop.index }}" class="from-location" value="{{ route.from }}">
-            <label>Till</label>
-            <input type="text" name="pre_to_{{ loop.index }}" class="to-location" value="{{ route.to }}">
-            <label>Pris Småbil</label>
-            <input type="number" name="pre_small_{{ loop.index }}" value="{{ route.price_small }}">
-            <label>Pris Storbils</label>
-            <input type="number" name="pre_large_{{ loop.index }}" value="{{ route.price_large }}">
-            <label><input type="checkbox" name="pre_delete_{{ loop.index }}"> Ta bort</label>
+  <h1>⚙️ Inställningar</h1>
+
+  <!-- Flash-meddelanden -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, msg in messages %}
+        <div class="flash {{ category }}">{{ msg }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="grid cols-2">
+    <!-- Vänster: Tariffer + Platser -->
+    <div class="grid">
+      <!-- Tariffer (lokalt) -->
+      <div class="card">
+        <div class="section-title">
+          <h2>Tariffer</h2>
+          <span class="muted">Sparas lokalt i settings.json</span>
         </div>
-        {% endfor %}
+        <form method="POST">
+          <input type="hidden" name="action" value="save_tariffs" />
+          {% for name, values in tariffs.items() %}
+            <div class="card" style="padding:12px; background:#fff; border-color:#eee;">
+              <h3 style="margin:0 0 8px;">{{ name }}</h3>
+              <div class="row">
+                <div>
+                  <label>Startkostnad</label>
+                  <input type="number" name="{{ name }}_start" value="{{ values.start }}" step="0.01" />
+                </div>
+                <div>
+                  <label>Pris per km</label>
+                  <input type="number" name="{{ name }}_km" value="{{ values.km }}" step="0.01" />
+                </div>
+                <div>
+                  <label>Pris per timme</label>
+                  <input type="number" name="{{ name }}_hour" value="{{ values.hour }}" step="0.01" />
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+          <div style="margin-top:10px;">
+            <button type="submit" class="full">💾 Spara tariffer</button>
+          </div>
+        </form>
+      </div>
 
-        <h3>Lägg till ny fastpris</h3>
-        <label>Titel</label>
-        <input type="text" name="new_pre_title">
-        <label>Från</label>
-        <input type="text" name="new_pre_from" class="from-location">
-        <label>Till</label>
-        <input type="text" name="new_pre_to" class="to-location">
-        <label>Pris Småbil</label>
-        <input type="number" name="new_pre_small">
-        <label>Pris Storbils</label>
-        <input type="number" name="new_pre_large">
+      <!-- Lägg till plats (Sheets) -->
+      <div class="card">
+        <div class="section-title">
+          <h2>📍 Lägg till plats</h2>
+          <span class="muted">Sparas i Google Sheets</span>
+        </div>
+        <form method="POST">
+          <input type="hidden" name="action" value="add_place" />
+          <label>Titel</label>
+          <input type="text" name="place_title" placeholder="t.ex. Åre" required />
+          <label>Adress (Google Maps)</label>
+          <input type="text" name="place_address" class="autocomplete" placeholder="Skriv adress" required />
+          <input type="hidden" id="place_place_id" name="place_place_id" />
+          <label>Alias (valfritt, kommateckenseparerat)</label>
+          <input type="text" name="place_aliases" placeholder="t.ex. Åre centrum, Åre by" />
+          <div style="margin-top:10px;">
+            <button type="submit" class="full">💾 Spara plats till Sheets</button>
+          </div>
+          <p class="muted" style="margin-top:8px;">Platsen geokodas (SE/NO) och sparas med place_id + lat/lng.</p>
+        </form>
+      </div>
+    </div>
 
-        <button type="submit">💾 Spara</button>
-    </form>
+    <!-- Höger: Lägg till rutt + Översikter -->
+    <div class="grid">
+      <!-- Lägg till fastprisrutt (Sheets) -->
+      <div class="card">
+        <div class="section-title">
+          <h2>🛣️ Lägg till fastprisrutt</h2>
+          <span class="muted">Sparas i Google Sheets</span>
+        </div>
+        <form method="POST">
+          <input type="hidden" name="action" value="add_route" />
+          <div class="row">
+            <div>
+              <label>Från (titel)</label>
+              <select name="route_from_title" required>
+                <option value="">Välj...</option>
+                {% for p in address_titles %}
+                  <option value="{{ p.title }}">{{ p.title }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label>Till (titel)</label>
+              <select name="route_to_title" required>
+                <option value="">Välj...</option>
+                {% for p in address_titles %}
+                  <option value="{{ p.title }}">{{ p.title }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <label>Från-adress (valfritt – hämtas från plats om tomt)</label>
+              <input type="text" name="route_from_address" class="autocomplete" placeholder="Skriv adress" />
+              <input type="hidden" id="route_from_place_id" name="route_from_place_id" />
+            </div>
+            <div>
+              <label>Till-adress (valfritt – hämtas från plats om tomt)</label>
+              <input type="text" name="route_to_address" class="autocomplete" placeholder="Skriv adress" />
+              <input type="hidden" id="route_to_place_id" name="route_to_place_id" />
+            </div>
+          </div>
+
+          <label>Ruttitel (valfritt)</label>
+          <input type="text" name="route_title" placeholder="t.ex. Åre → Værnes Flygplats" />
+
+          <label style="margin-top:6px;">
+            <input type="checkbox" name="route_create_reverse" checked />
+            Skapa returväg också
+          </label>
+
+          <h3 style="margin-top:14px;">Priskategorier</h3>
+          <p class="muted" style="margin:6px 0 10px;">
+            Fyll minst en rad. <strong>Exakt en</strong> av <em>Total</em> eller <em>Pris/Person</em> ska vara ifylld.
+          </p>
+
+          <div id="price-rows">
+            <div class="price-entry">
+              <label>Etikett</label>
+              <input type="text" name="price_label[]" placeholder="t.ex. 1–4 personer" />
+              <div class="row">
+                <div>
+                  <label>Min</label>
+                  <input type="number" name="price_min[]" step="1" min="0" />
+                </div>
+                <div>
+                  <label>Max (valfritt)</label>
+                  <input type="number" name="price_max[]" step="1" min="0" />
+                </div>
+                <div>
+                  <label>Total (kr)</label>
+                  <input type="number" name="price_total[]" step="1" min="0" />
+                </div>
+                <div>
+                  <label>Pris/Person (kr)</label>
+                  <input type="number" name="price_ppp[]" step="1" min="0" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:8px;">
+            <button class="secondary" style="border-color:#ccc;" onclick="addPriceRow(event)">➕ Lägg till rad</button>
+            <span></span>
+          </div>
+
+          <div style="margin-top:12px;">
+            <button type="submit" class="full">💾 Spara rutt + priser till Sheets</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Översikt: Platser -->
+      <div class="card">
+        <div class="section-title">
+          <h2>📍 Platser (översikt)</h2>
+          <span class="muted">{{ address_titles|length }} st</span>
+        </div>
+        <div style="max-height:220px; overflow:auto; border:1px solid var(--border); border-radius:6px;">
+          <table>
+            <thead>
+              <tr><th style="width:32px;"></th><th>Titel</th><th>Adress</th></tr>
+            </thead>
+            <tbody>
+              {% for p in address_titles %}
+                <tr>
+                  <td>
+                    <form method="POST" class="inline" onsubmit="return confirm('Ta bort plats {{p.title}}?');">
+                      <input type="hidden" name="action" value="delete_place">
+                      <input type="hidden" name="place_id" value="{{ p.id }}">
+                      <button type="submit" class="secondary" title="Ta bort" style="border-color:#ccc;">✖</button>
+                    </form>
+                  </td>
+                  <td>{{ p.title }}</td>
+                  <td class="muted">{{ p.address }}</td>
+                </tr>
+              {% endfor %}
+              {% if address_titles|length == 0 %}
+                <tr><td colspan="3" class="muted">Inga platser ännu.</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+        <p class="muted" style="margin-top:8px;">Obs: Går bara att ta bort platser som inte används av rutter.</p>
+      </div>
+
+      <!-- Översikt: Rutter -->
+      <div class="card">
+        <div class="section-title">
+          <h2>🛣️ Rutter (översikt)</h2>
+          <span class="muted">{{ predefined|length }} st</span>
+        </div>
+        <div style="max-height:260px; overflow:auto; border:1px solid var(--border); border-radius:6px;">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:32px;"></th>
+                <th>Från</th>
+                <th>Till</th>
+                <th>Priskategorier</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in predefined %}
+                <tr>
+                  <td>
+                    <form method="POST" class="inline" onsubmit="return confirm('Ta bort rutt {{r.from}} → {{r.to}}?');">
+                      <input type="hidden" name="action" value="delete_route">
+                      <input type="hidden" name="route_id" value="{{ r.route_id }}">
+                      <button type="submit" class="secondary" title="Ta bort" style="border-color:#ccc;">✖</button>
+                    </form>
+                  </td>
+                  <td>{{ r.from }}</td>
+                  <td>{{ r.to }}</td>
+                  <td class="muted">{{ r.prices and r.prices|length or 0 }}</td>
+                </tr>
+              {% endfor %}
+              {% if predefined|length == 0 %}
+                <tr><td colspan="4" class="muted">Inga rutter ännu.</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+        <p class="muted" style="margin-top:8px;">Tar även bort kopplade priskategorier.</p>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

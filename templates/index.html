@@ -1,272 +1,175 @@
 <!DOCTYPE html>
 <html lang="sv">
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Taxi Trip Calculator</title>
+  <meta charset="UTF-8">
+  <title>Taxi Kalkylator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 600px;
-      margin: auto;
-      padding: 20px;
-    }
-
-    h2 {
-      margin-bottom: 10px;
-    }
-
-    .shortcuts {
-      margin: 20px 0;
-    }
-
-    .shortcut-btn {
-      display: block;
-      width: 100%;
-      margin-bottom: 10px;
-      padding: 10px;
-      background-color: #28a745;
-      color: white;
-      border: none;
-      font-size: 16px;
-      cursor: pointer;
-      border-radius: 4px;
-    }
-
-    .shortcut-btn:hover {
-      background-color: #218838;
-    }
-
-    .form-section {
-      background: #f8f8f8;
-      padding: 15px;
-      border-radius: 8px;
-      border: 1px solid #ccc;
-      margin-bottom: 20px;
-    }
-
-    input[type="text"] {
-      width: 100%;
-      padding: 8px;
-      margin-bottom: 10px;
-      border: 1px solid #ccc;
-      font-size: 16px;
-    }
-
-    button[type="submit"] {
-      width: 100%;
-      padding: 10px;
-      background-color: #007BFF;
-      color: white;
-      border: none;
-      font-size: 16px;
-      cursor: pointer;
-    }
-
-    button[type="submit"]:hover {
-      background-color: #0056b3;
-    }
-
-    .result-box {
-      margin-top: 20px;
-      background: #f0f0f0;
-      padding: 15px;
-      border-radius: 8px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-    }
-
-    th, td {
-      border: 1px solid #ccc;
-      padding: 8px;
-      text-align: center;
-    }
-
-    th {
-      background-color: #e0e0e0;
-    }
-
-    .settings-link {
-      display: inline-block;
-      margin-top: 10px;
-      text-decoration: none;
-      color: #007BFF;
-      font-weight: bold;
-    }
-    @media (max-width: 600px) {
-      body {
-        padding: 10px;
-        font-size: 16px;
-      }
-      input, button {
-        font-size: 16px;
-      }
-      button {
-      padding: 14px;
-      font-size: 18px;
-      }
-      .route-box {
-        padding: 8px;
-      }
-    }
-
+    body { font-family: Arial; padding: 20px; max-width: 700px; margin: auto; }
+    button { padding: 10px; margin-top: 10px; font-size: 16px; cursor:pointer; }
+    .row { display: flex; gap: 10px; }
+    .row > * { flex: 1; }
+    .map-preview { width: 100%; height: 300px; border: 1px solid #ccc; margin-top: 20px; }
+    .result-box { background: #f0f0f0; padding: 10px; margin-top: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
+    input, select { width: 100%; padding: 10px; font-size: 16px; }
+    .location-row { display: flex; gap: 0; margin: 10px 0; }
+    .location-row input { flex: 1; height: 40px; padding: 10px; border-radius: 4px 0 0 4px; border: 1px solid #ccc; border-right: none; }
+    .location-row button { height: 40px; padding: 0 14px; font-size: 18px; border-radius: 0 4px 4px 0; border: 1px solid #ccc; background: #f3f3f3; }
   </style>
-
-  <!-- ✅ Google Places API for autocomplete -->
-         <script
-          src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&libraries=places"
-          defer>
-        </script>
-
-        <script>
-          function useCurrentLocation() {
-            if (!navigator.geolocation) {
-              alert("Din webbläsare stödjer inte platstjänster.");
-              return;
-            }
-
-            navigator.geolocation.getCurrentPosition(async function (position) {
-              const lat = position.coords.latitude;
-              const lng = position.coords.longitude;
-              const apiKey = "{{ api_key }}";
-              const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`;
-
-              try {
-                const response = await fetch(url);
-                const data = await response.json();
-                if (data.status === "OK") {
-                  const address = data.results[0].formatted_address;
-                  document.getElementById("origin").value = address;
-                } else {
-                  alert("Kunde inte hitta adress.");
-                }
-              } catch (err) {
-                alert("Ett fel uppstod vid hämtning av plats.");
-              }
-            }, function (error) {
-              alert("Kunde inte hämta plats: " + error.message);
-            });
-          }
-        </script>
-
-        <script>
-        function initAutocomplete() {
-          const originInput = document.getElementById("origin");
-          const destInput = document.getElementById("destination");
-
-          new google.maps.places.Autocomplete(originInput, { types: ["geocode"] });
-          new google.maps.places.Autocomplete(destInput, { types: ["geocode"] });
-        }
-
-        window.initAutocomplete = initAutocomplete;
-        </script>
-
-      <script>
-      // Vänta X ms efter sista ändring innan man skickar formuläret
-      function debounce(fn, delay) {
-        let timer = null;
-        return function(...args) {
-          clearTimeout(timer);
-          timer = setTimeout(() => fn.apply(this, args), delay);
-        };
-      }
-
-      // Aktivera debounce på knappen eller formuläret
-      window.onload = function () {
-          // Initiera Google Places-autocomplete
-          if (typeof initAutocomplete === 'function') {
-            initAutocomplete();
-          }
-
-          // Aktivera debounce på formuläret
-          const form = document.querySelector("form");
-          if (form) {
-            form.addEventListener("submit", debounce(function () {
-              form.submit();
-            }, 700));
-            }
-      };
-      </script>
-
+  <script src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&libraries=places" defer></script>
 </head>
-
 <body>
-  <h2>🚖 Taxi Trip Calculator</h2>
-
-  <a class="settings-link" href="{{ url_for('settings') }}">⚙️ Inställningar</a>
-
-  {% if predefined_routes %}
-  <div class="shortcuts">
-    <h3>Snabbval – fasta priser</h3>
-    {% for route in predefined_routes %}
-      <form method="POST">
-        <input type="hidden" name="origin" value="{{ route.from }}">
-        <input type="hidden" name="destination" value="{{ route.to }}">
-        <input type="hidden" name="fixed_price" value="1">
-        <input type="hidden" name="title" value="{{ route.title }}">
-        {% if route.price_small %}
-          <input type="hidden" name="price_small" value="{{ route.price_small }}">
-        {% endif %}
-        {% if route.price_large %}
-          <input type="hidden" name="price_large" value="{{ route.price_large }}">
-        {% endif %}
-        <button class="shortcut-btn" type="submit">{{ route.title }}</button>
-      </form>
-    {% endfor %}
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h2>🚖 Taxi Kalkylator</h2>
+    <a href="/settings" style="text-decoration:none;font-size:16px;background:#007BFF;color:#fff;padding:8px 12px;border-radius:4px;">⚙️ Inställningar</a>
   </div>
-  {% endif %}
 
-  <div class="form-section">
-    <form method="POST">
-      <label for="origin">Från:</label>
-        <div style="display: flex; gap: 8px;">
-          <input type="text" id="origin" name="origin" placeholder="Startplats" value="{{ origin }}" required style="flex: 1;">
-          <button type="button" onclick="useCurrentLocation()" title="Använd nuvarande plats">📍</button>
-        </div>
+  <form method="POST" id="taxi-form">
+    <!-- Fastpris-dropdowns -->
+    <div class="row">
+      <select id="pre_from" name="pre_from">
+        <option value="">📍 Från (fastpris)</option>
+      </select>
 
-      <label for="destination">Till:</label>
-      <input type="text" id="destination" name="destination" placeholder="Destination" value="{{ destination }}" required>
 
-      <button type="submit">Beräkna pris</button>
-    </form>
-  </div>
+      <select id="pre_to" name="pre_to" disabled>
+        <option value="">Till (fastpris)</option>
+      </select>
+    </div>
+
+    <!-- Passagerare -->
+    <div style="width: 200px; margin-top: 10px;">
+      <select name="passengers" id="passengers" style="width:100%;padding:6px;">
+        <option value="0">Antal passagerare</option>
+        {% for i in range(1, 61) %}
+          <option value="{{ i }}" {% if i == passengers %}selected{% endif %}>{{ i }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Från/Till med place_id -->
+    <div class="location-row">
+      <input type="text" id="origin" name="origin" placeholder="Från" class="autocomplete" value="{{ origin }}" />
+      <input type="hidden" id="origin_place_id" name="origin_place_id" />
+      <button type="button" onclick="useCurrentLocation()">📍</button>
+    </div>
+    <input type="text" id="destination" name="destination" placeholder="Till" class="autocomplete" value="{{ destination }}" />
+    <input type="hidden" id="destination_place_id" name="destination_place_id" />
+
+    <!-- flagga för fastpris -->
+    <input type="hidden" name="fixed_price" id="fixed_price" value="0" />
+
+    <button type="submit">Beräkna</button>
+  </form>
 
   {% if result %}
-    {% if result.map_url %}
-        <iframe
-        src="{{ result.map_url }}"
-        width="100%"
-        height="300"
-        style="border:1px solid #ccc;"
-        allowfullscreen
-        loading="lazy"
-        referrerpolicy="no-referrer-when-downgrade">
-        </iframe>
-    {% endif %}
-
+    <iframe src="{{ result.map_url }}" class="map-preview" allowfullscreen></iframe>
     <div class="result-box">
       <strong>Från:</strong> {{ result.origin }}<br>
       <strong>Till:</strong> {{ result.destination }}<br>
       <strong>Avstånd:</strong> {{ result.distance }} km<br>
-      <strong>Restid:</strong> {{ result.duration }}
+      <strong>Restid:</strong> {{ result.duration }}<br>
+      <table>
+        <tr><th>Typ</th><th>Pris</th></tr>
+        {% for item in result.calculations %}
+          <tr><td>{{ item.tariff }}</td><td><strong>{{ item.total_cost }} kr</strong></td></tr>
+        {% endfor %}
+      </table>
     </div>
-
-    <h3>Pris per taxa</h3>
-    <table>
-      <tr>
-        <th>Taxa</th>
-        <th>Totalpris (kr)</th>
-      </tr>
-      {% for item in result.calculations %}
-      <tr>
-        <td>{{ item.tariff }}</td>
-        <td><strong>{{ item.total_cost }}</strong></td>
-      </tr>
-      {% endfor %}
-    </table>
   {% endif %}
+
+  <script>
+    const predefined = {{ predefined_routes|tojson|safe }};
+    const preFromSelect = document.getElementById("pre_from");
+    const preToSelect = document.getElementById("pre_to");
+    const originInput = document.getElementById("origin");
+    const destInput = document.getElementById("destination");
+    const fixedInput = document.getElementById("fixed_price");
+    const originPID = document.getElementById("origin_place_id");
+    const destPID = document.getElementById("destination_place_id");
+
+    function unique(arr){ return [...new Set(arr)]; }
+
+    // Fyll "Från" med unika origin-titlar
+    function populateFromList() {
+      const origins = unique(predefined.map(r => r.from));
+      origins.sort().forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o; opt.textContent = o;
+        preFromSelect.appendChild(opt);
+      });
+    }
+
+    // Fyll "Till" baserat på vald "Från"
+    preFromSelect.addEventListener("change", () => {
+      const from = preFromSelect.value;
+      preToSelect.innerHTML = '<option value="">Till (fastpris)</option>';
+      preToSelect.disabled = true;
+      if (!from) return;
+      const dests = [...new Set(predefined.filter(r => r.from === from).map(r => r.to))];
+      dests.forEach(to => {
+        const opt = document.createElement("option");
+        opt.value = to; opt.textContent = to;
+        preToSelect.appendChild(opt);
+      });
+      preToSelect.disabled = false;
+    });
+
+    // När man väljer fastpris: fyll och skicka
+    preToSelect.addEventListener("change", () => {
+      const from = preFromSelect.value;
+      const to = preToSelect.value;
+      if (!from || !to) return;
+      originInput.value = from;
+      destInput.value = to;
+      fixedInput.value = 1;
+      // fastpris använder sparade adresser → rensa place_id (så backend tar rutternas adresser)
+      originPID.value = ""; destPID.value = "";
+      document.getElementById("taxi-form").submit();
+    });
+
+    // Autocomplete + place_id
+    function initAutocomplete() {
+      document.querySelectorAll(".autocomplete").forEach(input => {
+        const ac = new google.maps.places.Autocomplete(input, {
+                      fields: ["place_id", "formatted_address", "geometry"],
+                      types: ["geocode"],
+                      componentRestrictions: { country: ['se', 'no'] }   // <— svensk/norsk bias
+                    });
+        ac.addListener("place_changed", () => {
+          const place = ac.getPlace();
+          if (input.id === "origin") {
+            originPID.value = place.place_id || "";
+            if (place.formatted_address) input.value = place.formatted_address;
+          } else if (input.id === "destination") {
+            destPID.value = place.place_id || "";
+            if (place.formatted_address) input.value = place.formatted_address;
+          }
+        });
+        input.addEventListener("input", () => {
+          // om användaren börjar skriva igen, nolla place_id så backend inte använder gammal id
+          if (input.id === "origin") originPID.value = "";
+          if (input.id === "destination") destPID.value = "";
+        });
+      });
+    }
+
+    function useCurrentLocation() {
+      if (!navigator.geolocation) return alert("Din enhet stöder inte plats");
+      navigator.geolocation.getCurrentPosition(pos => {
+        const coords = `${pos.coords.latitude},${pos.coords.longitude}`;
+        originInput.value = coords;
+        originPID.value = ""; // vi skickar lat,lng
+      });
+    }
+
+    window.onload = () => {
+  if (typeof google === "object") initAutocomplete();
+  populateFromList(); // <— NYTT: fyll unika 'Från'
+};
+
+  </script>
 </body>
 </html>

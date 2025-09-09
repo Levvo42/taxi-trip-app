@@ -11,27 +11,38 @@
       "hour": 720.0
     }
   },
+  "address_titles": [],
   "predefined": [
     {
-      "title": "Östersund Flygplats",
-      "from": "Åre, Sweden",
-      "to": "Östersund Åre Airport, Frösön, Sweden",
-      "price_small": 1600,
-      "price_large": 1900
+      "title": "Åre → Vaernes",
+      "from": "Åre",
+      "to": "Vaernes",
+      "prices": [
+        {
+          "label": "1–4 personer",
+          "min": 1,
+          "max": 4,
+          "total": 1200
+        }
+      ]
     },
     {
-      "title": "Værnes Flygplats",
-      "from": "Åre, Sweden",
-      "to": "Trondheim Airport, Værnes (TRD), Stjørdal, Norway",
-      "price_small": 2900,
-      "price_large": 3600
+      "title": "",
+      "from": "Vaernes",
+      "to": "Åre",
+      "prices": []
     },
     {
-      "title": "Copperhill Staff-house",
-      "from": "Copperhillvägen 56, Åre, Sweden",
-      "to": "Åre Torg, Årevägen, Åre, Sweden",
-      "price_small": 280,
-      "price_large": 320
+      "title": "",
+      "from": "Åre",
+      "to": "Östersund Flygplats",
+      "prices": []
+    },
+    {
+      "title": "",
+      "from": "Östersund Flygplats",
+      "to": "Åre",
+      "prices": []
     }
   ]
 }
