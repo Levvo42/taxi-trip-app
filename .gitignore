@@ -6,3 +6,4 @@ secrets/
 topptaxi-sa.json
 .settings/
 .idea/
+*.key.json
