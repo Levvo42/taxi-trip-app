@@ -1,34 +1,51 @@
-import os, json, time, math, requests
-from flask import Flask, request, render_template, redirect, url_for, flash
+import json
+import math
+import os
+import re
+import time
+
+import requests
 from dotenv import load_dotenv
+from flask import Flask, flash, redirect, render_template, request, url_for
+
 from sheets_repo import (
-    load_all as sheets_load_all,
-    append_place, append_route_with_prices,
-    delete_route as sheets_delete_route,
+    append_place,
+    append_route_with_prices,
     delete_place as sheets_delete_place,
-    update_route_row,
+    delete_route as sheets_delete_route,
+    load_all as sheets_load_all,
     update_place_latlng_by_title,
+    update_route_row,
 )
 
+# -----------------------------------------------------------------------------
+# App setup
+# -----------------------------------------------------------------------------
 load_dotenv()
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
-STATIC_DIR = os.path.join(BASE_DIR, "static")  # valfritt, om du har en /static
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+
 app = Flask(__name__, template_folder=TEMPLATE_DIR, static_folder=STATIC_DIR)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "supersecretkey")
+
 API_KEY = os.getenv("GOOGLE_API_KEY")
 SETTINGS_FILE = "settings.json"
 
 
 @app.after_request
 def add_no_store(resp):
+    """Disable browser/proxy caching so changes are visible immediately."""
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     resp.headers["Pragma"] = "no-cache"
     resp.headers["Expires"] = "0"
     return resp
 
 
-# ---------- Settings (tariffer lokalt) ----------
+# -----------------------------------------------------------------------------
+# Settings (tariffer lagras lokalt)
+# -----------------------------------------------------------------------------
 def load_settings():
     if os.path.exists(SETTINGS_FILE):
         with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
@@ -51,9 +68,13 @@ def save_settings(data):
 user_tariffs = load_settings().get("tariffs", {})
 
 
-# ---------- Helpers ----------
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
 def make_routes_bidirectional(routes):
-    out, seen = [], set()
+    """Return both directions for each predefined route."""
+    out = []
+    seen = set()
     for r in routes:
         k1 = (r.get("from"), r.get("to"))
         k2 = (r.get("to"), r.get("from"))
@@ -61,20 +82,22 @@ def make_routes_bidirectional(routes):
             out.append(r)
             seen.add(k1)
         if k2 not in seen:
-            out.append({
-                **r,
-                "route_id": r.get("route_id"),
-                "from": r.get("to"),
-                "to": r.get("from"),
-                "from_address": r.get("to_address"),
-                "to_address": r.get("from_address"),
-            })
+            out.append(
+                {
+                    **r,
+                    "route_id": r.get("route_id"),
+                    "from": r.get("to"),
+                    "to": r.get("from"),
+                    "from_address": r.get("to_address"),
+                    "to_address": r.get("from_address"),
+                }
+            )
             seen.add(k2)
     return out
 
 
 SHEETS_CACHE = {"routes": [], "places": [], "loaded_at": 0.0}
-SHEETS_TTL = 0  # sek – hämta var 5e sek från Sheets (justera senare om du vill cacha)
+SHEETS_TTL = 0  # sek – 0 = alltid färskt från Sheets (vi bustar cache vid POST)
 
 
 def refresh_sheets_cache(force=False):
@@ -98,23 +121,34 @@ def get_address_titles_from_sheets():
     refresh_sheets_cache()
     out = []
     for p in SHEETS_CACHE["places"]:
-        out.append({
-            "id": p.get("PlaceID", ""),
-            "title": p.get("Title", ""),
-            "address": p.get("Address", ""),
-            "lat": p.get("Lat"),
-            "lng": p.get("Lng"),
-        })
+        out.append(
+            {
+                "id": p.get("PlaceID", ""),
+                "title": p.get("Title", ""),
+                "address": p.get("Address", ""),
+                "lat": p.get("Lat"),
+                "lng": p.get("Lng"),
+            }
+        )
     return out
 
 
 def calculate_derived_tariffs():
+    """Return base + derived discounted tariffs."""
     t1 = user_tariffs.get("Taxa 1 (Småbil)", {"start": 0.0, "km": 0.0, "hour": 0.0})
     t2 = user_tariffs.get("Taxa 2 (Storbils)", {"start": 0.0, "km": 0.0, "hour": 0.0})
     return {
-        "Taxa 1 (Småbil)": {"start": float(t1["start"]), "km": float(t1["km"]), "hour": float(t1["hour"])},
-        "Taxa 2 (Storbils)": {"start": float(t2["start"]), "km": float(t2["km"]), "hour": float(t2["hour"])},
-        "Taxa 4 (Småbil Rabatt)": {
+        "Taxa 1 (Småbil)": {
+            "start": float(t1["start"]),
+            "km": float(t1["km"]),
+            "hour": float(t1["hour"]),
+        },
+        "Taxa 2 (Storbil)": {
+            "start": float(t2["start"]),
+            "km": float(t2["km"]),
+            "hour": float(t2["hour"]),
+        },
+        "Taxa 4 (Småbils Rabatt)": {
             "start": round(float(t1["start"]) * 0.83, 2),
             "km": round(float(t1["km"]) * 0.86, 2),
             "hour": round(float(t1["hour"]) * 0.85, 2),
@@ -127,32 +161,17 @@ def calculate_derived_tariffs():
     }
 
 
-# ---------- Google APIs ----------
-def get_travel_details(origin, destination):
-    """origin/destination kan vara 'place_id:XXXX', 'lat,lng' eller adress-sträng."""
-    url = "https://maps.googleapis.com/maps/api/directions/json"
-    params = {"origin": origin, "destination": destination, "mode": "driving", "key": API_KEY}
-    r = requests.get(url, params=params, timeout=20)
-    data = r.json()
-    try:
-        if data.get("status") == "OK":
-            leg = data["routes"][0]["legs"][0]
-            return leg["duration"]["value"] / 60.0, leg["distance"]["value"] / 1000.0
-        print("⚠️ Directions status:", data.get("status"))
-    except Exception as e:
-        print("🚨 Tolkningsfel:", e)
-    return None, None
-
-
+# -----------------------------------------------------------------------------
+# Google APIs
+# -----------------------------------------------------------------------------
 def geocode_address(address: str = None, place_id: str = None):
     """
     Returnerar (lat, lng, formatted_address).
     - Om place_id finns: använd Places Details (säkrast).
-    - Annars: använd Geocoding (adress-sträng).
+    - Annars: använd Geocoding (adress-sträng) med SE/NO-bias.
     """
     try:
         if place_id:
-            # Places Details API ger oss geometry direkt från place_id
             url = "https://maps.googleapis.com/maps/api/place/details/json"
             params = {
                 "place_id": place_id,
@@ -169,7 +188,6 @@ def geocode_address(address: str = None, place_id: str = None):
             else:
                 print("⚠️ Place Details status:", data.get("status"), data)
 
-        # Fallback: Geocoding på adress-sträng (SE/NO-bias)
         if address:
             url = "https://maps.googleapis.com/maps/api/geocode/json"
             params = {
@@ -192,39 +210,95 @@ def geocode_address(address: str = None, place_id: str = None):
     return None, None, address or ""
 
 
+def get_travel_details(origin_param: str, destination_param: str):
+    """
+    Directions via Google.
+    origin_param/destination_param ska redan vara 'place_id:...' eller 'lat,lng'.
+    """
+    url = "https://maps.googleapis.com/maps/api/directions/json"
+    params = {
+        "origin": origin_param,
+        "destination": destination_param,
+        "mode": "driving",
+        "key": API_KEY,
+    }
+    r = requests.get(url, params=params, timeout=20)
+    data = r.json()
+    try:
+        if data.get("status") == "OK":
+            leg = data["routes"][0]["legs"][0]
+            return leg["duration"]["value"] / 60.0, leg["distance"]["value"] / 1000.0
+        print("⚠️ Directions status:", data.get("status"))
+    except Exception as e:
+        print("🚨 Tolkningsfel:", e)
+    return None, None
 
-def generate_static_map_url(origin, destination):
+
+def generate_static_map_url(origin_param: str, destination_param: str):
+    """Bygg dynamisk Embed-URL. Vi antar normalize/validering redan gjort."""
     base = "https://www.google.com/maps/embed/v1/directions"
-    return f"{base}?origin={origin}&destination={destination}&key={API_KEY}&mode=driving", None, None
+    url = f"{base}?origin={origin_param}&destination={destination_param}&key={API_KEY}&mode=driving"
+    return url, None, None
 
 
-# ---------- Pris/bilar ----------
+def normalize_endpoints(origin_text, dest_text, origin_pid="", dest_pid=""):
+    """
+    Returnerar (o_api, d_api, o_display, d_display).
+    o_api/d_api används till både Directions och Embed.
+    o_display/d_display visas i resultatet.
+    """
+    def norm(text, pid):
+        if pid:
+            # API-param med place_id; display sätter vi separat via geocode (snabbbest effort)
+            return f"place_id:{pid}", None
+        s = (text or "").strip()
+        # lat,lng manuellt?
+        if re.match(r"^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$", s):
+            return s, s
+        lat, lng, fmt = geocode_address(s) if s else (None, None, None)
+        api = f"{lat},{lng}" if lat is not None and lng is not None else s
+        return api, (fmt or s)
+
+    o_api, o_disp = norm(origin_text, origin_pid)
+    d_api, d_disp = norm(dest_text, dest_pid)
+    return o_api, d_api, (o_disp or origin_text), (d_disp or dest_text)
+
+
+# -----------------------------------------------------------------------------
+# Pris/bilar
+# -----------------------------------------------------------------------------
 def calculate_price(duration_min, distance_km, start_cost, km_cost, hourly_cost):
     total = float(start_cost) + (float(km_cost) * float(distance_km)) + (
-                (float(duration_min) / 60.0) * float(hourly_cost))
+        (float(duration_min) / 60.0) * float(hourly_cost)
+    )
     return round(total)
 
 
 def format_duration(minutes):
-    if minutes is None: return "–"
+    if minutes is None:
+        return "–"
     h = int(minutes) // 60
     m = int(minutes) % 60
     return f"{h}h {m}min" if h else f"{m}min"
 
 
 def distribute_cars(passengers: int):
-    if passengers <= 0: return 0, 0
+    if passengers <= 0:
+        return 0, 0
     large = passengers // 8
     rem = passengers % 8
     small = math.ceil(rem / 4) if rem > 0 else 0
     return large, small
 
 
-# ---------- Views ----------
+# -----------------------------------------------------------------------------
+# Views
+# -----------------------------------------------------------------------------
 @app.route("/", methods=["GET", "POST"])
 def index():
     result = None
-    origin = destination = ""
+    origin = ""
+    destination = ""
     passenger_count = 0
     tariffs = calculate_derived_tariffs()
 
@@ -234,37 +308,45 @@ def index():
         origin_pid = (request.form.get("origin_place_id") or "").strip()
         dest_pid = (request.form.get("destination_place_id") or "").strip()
         is_fixed = request.form.get("fixed_price") == "1"
+
         try:
             passenger_count = int(request.form.get("passengers", 0))
         except Exception:
             passenger_count = 0
 
-        # Bygg säkra parametrar till Google: använd place_id om finns
-        o_param = f"place_id:{origin_pid}" if origin_pid else origin
-        d_param = f"place_id:{dest_pid}" if dest_pid else destination
-
         # FASTPRIS
         if is_fixed:
             routes = get_predefined_routes()
-            matched = next((r for r in routes if r.get("from") == origin and r.get("to") == destination), None)
+            matched = next(
+                (r for r in routes if r.get("from") == origin and r.get("to") == destination),
+                None,
+            )
             if matched:
-                from_addr = matched.get("from_address") or matched["from"]
-                to_addr = matched.get("to_address") or matched["to"]
+                # Om lat/lng finns – använd dem. Annars använd sparad adress.
+                if matched.get("from_lat") and matched.get("from_lng"):
+                    o_api = f"{matched['from_lat']},{matched['from_lng']}"
+                else:
+                    o_api, _, _, _ = normalize_endpoints(
+                        matched.get("from_address") or matched["from"], "", "", ""
+                    )
 
-                # Om lat/lng finns i rutten, använd dem för 100% träffsäkerhet
-                from_param = (f"{matched['from_lat']},{matched['from_lng']}"
-                              if matched.get("from_lat") and matched.get("from_lng") else from_addr)
-                to_param = (f"{matched['to_lat']},{matched['to_lng']}"
-                            if matched.get("to_lat") and matched.get("to_lng") else to_addr)
+                if matched.get("to_lat") and matched.get("to_lng"):
+                    d_api = f"{matched['to_lat']},{matched['to_lng']}"
+                else:
+                    d_api, _, _, _ = normalize_endpoints(
+                        "", matched.get("to_address") or matched["to"], "", ""
+                    )
 
-                duration, distance = get_travel_details(from_param, to_param)
-                map_url, _, _ = generate_static_map_url(from_param, to_param)
+                duration, distance = get_travel_details(o_api, d_api)
+                map_url, _, _ = generate_static_map_url(o_api, d_api)
+
                 rows = []
                 for price in matched.get("prices", []):
                     min_p = int(price.get("min", 0))
-                    max_p = price.get("max")
-                    max_p = int(max_p) if max_p not in (None, "") else 10 ** 9
+                    max_raw = price.get("max")
+                    max_p = int(max_raw) if max_raw not in (None, "") else 10**9
                     label = price.get("label", "Fastpris")
+
                     if passenger_count == 0 or (min_p <= passenger_count <= max_p):
                         if "total" in price:
                             cost = int(price["total"])
@@ -274,23 +356,37 @@ def index():
                         else:
                             continue
                         rows.append({"tariff": label, "total_cost": cost})
+
                 if rows:
                     result = {
-                        "origin": matched["from"], "destination": matched["to"],
+                        "origin": matched["from"],
+                        "destination": matched["to"],
                         "duration": format_duration(duration),
                         "distance": round(distance, 1) if distance else "–",
-                        "calculations": rows, "map_url": map_url,
+                        "calculations": rows,
+                        "map_url": map_url,
                     }
 
-        # TARIFF
+        # TARIFF (dynamisk)
         else:
-            duration, distance = get_travel_details(o_param, d_param)
+            # Normalisera EN gång → samma input till både Directions och Embed
+            o_api, d_api, o_disp, d_disp = normalize_endpoints(
+                origin, destination, origin_pid, dest_pid
+            )
+            duration, distance = get_travel_details(o_api, d_api)
+
             if duration and distance:
                 rows = []
                 if passenger_count <= 0:
                     for name, t in tariffs.items():
-                        rows.append({"tariff": name,
-                                     "total_cost": calculate_price(duration, distance, t["start"], t["km"], t["hour"])})
+                        rows.append(
+                            {
+                                "tariff": name,
+                                "total_cost": calculate_price(
+                                    duration, distance, t["start"], t["km"], t["hour"]
+                                ),
+                            }
+                        )
                 else:
                     n_large, n_small = distribute_cars(passenger_count)
 
@@ -300,28 +396,48 @@ def index():
                         return unit * count
 
                     if n_small > 0:
-                        rows.append({"tariff": f"Småbil – Taxa 1 ×{n_small}",
-                                     "total_cost": per_tariff("Taxa 1 (Småbil)", n_small)})
-                        rows.append({"tariff": f"Småbil – Taxa 4 ×{n_small}",
-                                     "total_cost": per_tariff("Taxa 4 (Småbil Rabatt)", n_small)})
+                        rows.append(
+                            {
+                                "tariff": f"Småbil – Taxa 1 ×{n_small}",
+                                "total_cost": per_tariff("Taxa 1 (Småbil)", n_small),
+                            }
+                        )
+                        rows.append(
+                            {
+                                "tariff": f"Småbil – Taxa 4 ×{n_small}",
+                                "total_cost": per_tariff("Taxa 4 (Småbil Rabatt)", n_small),
+                            }
+                        )
                     if n_large > 0:
-                        rows.append({"tariff": f"Storbils – Taxa 2 ×{n_large}",
-                                     "total_cost": per_tariff("Taxa 2 (Storbils)", n_large)})
-                        rows.append({"tariff": f"Storbils – Taxa 5 ×{n_large}",
-                                     "total_cost": per_tariff("Taxa 5 (Storbils Rabatt)", n_large)})
+                        rows.append(
+                            {
+                                "tariff": f"Storbils – Taxa 2 ×{n_large}",
+                                "total_cost": per_tariff("Taxa 2 (Storbils)", n_large),
+                            }
+                        )
+                        rows.append(
+                            {
+                                "tariff": f"Storbils – Taxa 5 ×{n_large}",
+                                "total_cost": per_tariff("Taxa 5 (Storbils Rabatt)", n_large),
+                            }
+                        )
 
-                map_url, _, _ = generate_static_map_url(o_param, d_param)
+                map_url, _, _ = generate_static_map_url(o_api, d_api)
                 result = {
-                    "origin": origin, "destination": destination,
+                    "origin": o_disp,
+                    "destination": d_disp,
                     "duration": format_duration(duration),
                     "distance": round(distance, 1),
-                    "calculations": rows, "map_url": map_url,
+                    "calculations": rows,
+                    "map_url": map_url,
                 }
 
     return render_template(
         "index.html",
         result=result,
-        origin=origin, destination=destination, passengers=passenger_count,
+        origin=origin,
+        destination=destination,
+        passengers=passenger_count,
         api_key=API_KEY,
         predefined_routes=get_predefined_routes(),
     )
@@ -334,6 +450,7 @@ def settings():
     if request.method == "POST":
         action = request.form.get("action", "")
 
+        # --- Tariffer ---
         if action == "save_tariffs":
             updated = {}
             for key, vals in user_tariffs.items():
@@ -345,13 +462,16 @@ def settings():
                 except Exception:
                     updated[key] = vals
             user_tariffs = updated
+
             data = load_settings()
             data["tariffs"] = user_tariffs
             save_settings(data)
+
             flash("Tariffer sparade.", "success")
             refresh_sheets_cache(force=True)
             return redirect(url_for("settings"))
 
+        # --- Lägg till plats ---
         if action == "add_place":
             title = (request.form.get("place_title") or "").strip()
             address = (request.form.get("place_address") or "").strip()
@@ -359,16 +479,25 @@ def settings():
                 flash("Titel och adress krävs.", "warning")
                 refresh_sheets_cache(force=True)
                 return redirect(url_for("settings"))
+
             pid = (request.form.get("place_place_id") or "").strip()
             lat, lng, fmt_addr = geocode_address(address, place_id=pid if pid else None)
             try:
-                append_place(title, fmt_addr, lat, lng, aliases=request.form.get("place_aliases", "").strip())
+                append_place(
+                    title,
+                    fmt_addr,
+                    lat,
+                    lng,
+                    aliases=request.form.get("place_aliases", "").strip(),
+                )
                 flash(f"Plats '{title}' tillagd.", "success")
             except Exception as e:
                 flash(f"Kunde inte lägga till plats: {e}", "danger")
+
             refresh_sheets_cache(force=True)
             return redirect(url_for("settings"))
 
+        # --- Lägg till rutt ---
         if action == "add_route":
             from_title = (request.form.get("route_from_title") or "").strip()
             to_title = (request.form.get("route_to_title") or "").strip()
@@ -378,14 +507,26 @@ def settings():
                 return redirect(url_for("settings"))
 
             # Hämta address + lat/lng från Places
-            p_map = {p["title"]: {"address": p.get("address", ""), "lat": p.get("lat"), "lng": p.get("lng")}
-                     for p in get_address_titles_from_sheets()}
+            p_map = {
+                p["title"]: {
+                    "address": p.get("address", ""),
+                    "lat": p.get("lat"),
+                    "lng": p.get("lng"),
+                }
+                for p in get_address_titles_from_sheets()
+            }
 
             from_place = p_map.get(from_title, {})
             to_place = p_map.get(to_title, {})
 
-            from_address = (request.form.get("route_from_address") or "").strip() or from_place.get("address", "")
-            to_address = (request.form.get("route_to_address") or "").strip() or to_place.get("address", "")
+            from_address = (
+                (request.form.get("route_from_address") or "").strip()
+                or from_place.get("address", "")
+            )
+            to_address = (
+                (request.form.get("route_to_address") or "").strip()
+                or to_place.get("address", "")
+            )
 
             # Förifyll koordinater från platsen (om de redan finns i Places)
             flt = from_place.get("lat")
@@ -396,63 +537,93 @@ def settings():
             from_pid = (request.form.get("route_from_place_id") or "").strip()
             to_pid = (request.form.get("route_to_place_id") or "").strip()
 
-            # Geokoda ENDAST om lat/lng saknas eller om användaren gav en explicit adress/place_id
+            # Geokoda endast om lat/lng saknas eller om man gav explicit adress/place_id
             if (not flt or not fln) and (from_address or from_pid):
-                flt, fln, faddr = geocode_address(from_address, place_id=from_pid if from_pid else None)
+                flt, fln, faddr = geocode_address(
+                    from_address, place_id=from_pid if from_pid else None
+                )
             else:
-                # behåll den kända adressen som sparas till arket
                 faddr = from_address
 
             if (not tlt or not tln) and (to_address or to_pid):
-                tlt, tln, taddr = geocode_address(to_address, place_id=to_pid if to_pid else None)
+                tlt, tln, taddr = geocode_address(
+                    to_address, place_id=to_pid if to_pid else None
+                )
             else:
                 taddr = to_address
 
+            # Priskategorier
             labels = request.form.getlist("price_label[]")
             mins = request.form.getlist("price_min[]")
             maxs = request.form.getlist("price_max[]")
             totals = request.form.getlist("price_total[]")
             ppps = request.form.getlist("price_ppp[]")
+
             prices = []
             for i in range(len(labels)):
                 label = (labels[i] or "").strip()
-                if not label: continue
+                if not label:
+                    continue
+
                 min_v = mins[i].strip() if i < len(mins) else ""
                 max_v = maxs[i].strip() if i < len(maxs) else ""
                 total = totals[i].strip() if i < len(totals) else ""
                 ppp = ppps[i].strip() if i < len(ppps) else ""
+
                 if not min_v:
                     flash(f"Pris '{label}' måste ha Min.", "warning")
                     refresh_sheets_cache(force=True)
                     return redirect(url_for("settings"))
+
                 if (total == "" and ppp == "") or (total != "" and ppp != ""):
-                    flash(f"Pris '{label}' måste ha antingen Total eller Pris/Person.", "warning")
+                    flash(
+                        f"Pris '{label}' måste ha antingen Total eller Pris/Person.",
+                        "warning",
+                    )
                     refresh_sheets_cache(force=True)
                     return redirect(url_for("settings"))
+
                 price = {"label": label, "min": int(min_v)}
-                if max_v != "": price["max"] = int(max_v)
-                if total != "": price["total"] = int(total)
-                if ppp != "": price["price_per_person"] = int(ppp)
+                if max_v != "":
+                    price["max"] = int(max_v)
+                if total != "":
+                    price["total"] = int(total)
+                if ppp != "":
+                    price["price_per_person"] = int(ppp)
                 prices.append(price)
 
-            create_reverse = (request.form.get("route_create_reverse") == "on")
+            create_reverse = request.form.get("route_create_reverse") == "on"
             title = (request.form.get("route_title") or f"{from_title} → {to_title}").strip()
+
             try:
                 res = append_route_with_prices(
-                    from_title, to_title, faddr or from_address, taddr or to_address,
-                    title=title, from_lat=flt, from_lng=fln, to_lat=tlt, to_lng=tln,
-                    prices=prices
+                    from_title,
+                    to_title,
+                    faddr or from_address,
+                    taddr or to_address,
+                    title=title,
+                    from_lat=flt,
+                    from_lng=fln,
+                    to_lat=tlt,
+                    to_lng=tln,
+                    prices=prices,
                 )
-                # Säkra att radens lat/lng/adresser faktiskt skrevs (ibland blir de tomma)
+
+                # Säkra att lat/lng/adresser verkligen finns i raden
                 try:
-                    update_route_row(res["route_id"],
-                                     from_addr=(faddr or from_address),
-                                     to_addr=(taddr or to_address),
-                                     from_lat=flt, from_lng=fln, to_lat=tlt, to_lng=tln)
+                    update_route_row(
+                        res["route_id"],
+                        from_addr=(faddr or from_address),
+                        to_addr=(taddr or to_address),
+                        from_lat=flt,
+                        from_lng=fln,
+                        to_lat=tlt,
+                        to_lng=tln,
+                    )
                 except Exception as e:
                     print("⚠️ update_route_row (forward) misslyckades:", e)
 
-                # Om Places saknar lat/lng – fyll på nu (bekvämlighet)
+                # Backfilla Places med lat/lng om de saknas där
                 try:
                     if flt and fln:
                         update_place_latlng_by_title(from_title, flt, fln)
@@ -463,32 +634,50 @@ def settings():
 
                 if create_reverse:
                     append_route_with_prices(
-                        to_title, from_title, taddr or to_address, faddr or from_address,
+                        to_title,
+                        from_title,
+                        taddr or to_address,
+                        faddr or from_address,
                         title=f"{to_title} → {from_title}",
-                        from_lat=tlt, from_lng=tln, to_lat=flt, to_lng=fln,
-                        prices=prices, group_id=res["group_id"]
+                        from_lat=tlt,
+                        from_lng=tln,
+                        to_lat=flt,
+                        to_lng=fln,
+                        prices=prices,
+                        group_id=res["group_id"],
                     )
-                # Säkra lat/lng för returvägen också
-                try:
-                    # Hämta senaste route_id för returvägen genom att läsa om cache
-                    refresh_sheets_cache(force=True)
-                    # Leta upp rätt rutt via key (to→from) och samma group_id
-                    rev = next((r for r in SHEETS_CACHE["routes"]
-                                if r.get("from") == to_title and r.get("to") == from_title), None)
-                    if rev and rev.get("route_id"):
-                        update_route_row(rev["route_id"],
-                                         from_addr=(taddr or to_address),
-                                         to_addr=(faddr or from_address),
-                                         from_lat=tlt, from_lng=tln, to_lat=flt, to_lng=fln)
-                except Exception as e:
-                    print("⚠️ update_route_row (reverse) misslyckades:", e)
+                    # Uppdatera returvägen också
+                    try:
+                        refresh_sheets_cache(force=True)
+                        rev = next(
+                            (
+                                r
+                                for r in SHEETS_CACHE["routes"]
+                                if r.get("from") == to_title and r.get("to") == from_title
+                            ),
+                            None,
+                        )
+                        if rev and rev.get("route_id"):
+                            update_route_row(
+                                rev["route_id"],
+                                from_addr=(taddr or to_address),
+                                to_addr=(faddr or from_address),
+                                from_lat=tlt,
+                                from_lng=tln,
+                                to_lat=flt,
+                                to_lng=fln,
+                            )
+                    except Exception as e:
+                        print("⚠️ update_route_row (reverse) misslyckades:", e)
 
                 flash("Rutt(er) tillagda.", "success")
             except Exception as e:
                 flash(f"Kunde inte lägga till rutt: {e}", "danger")
+
             refresh_sheets_cache(force=True)
             return redirect(url_for("settings"))
 
+        # --- Ta bort rutt ---
         if action == "delete_route":
             rid = (request.form.get("route_id") or "").strip()
             try:
@@ -499,6 +688,7 @@ def settings():
             refresh_sheets_cache(force=True)
             return redirect(url_for("settings"))
 
+        # --- Ta bort plats ---
         if action == "delete_place":
             pid = (request.form.get("place_id") or "").strip()
             try:
@@ -516,12 +706,17 @@ def settings():
     # GET
     address_titles = get_address_titles_from_sheets()
     predefined = get_predefined_routes()
-    return render_template("settings.html",
-                           tariffs=user_tariffs,
-                           address_titles=address_titles,
-                           predefined=predefined,
-                           api_key=API_KEY)
+    return render_template(
+        "settings.html",
+        tariffs=user_tariffs,
+        address_titles=address_titles,
+        predefined=predefined,
+        api_key=API_KEY,
+    )
 
 
+# -----------------------------------------------------------------------------
+# Entrypoint
+# -----------------------------------------------------------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", debug=True)
