@@ -1,9 +1,19 @@
-venv/
+# Python/IDE
 __pycache__/
 *.pyc
-.env
-secrets/
-topptaxi-sa.json
-.settings/
 .idea/
-*.key.json
+.vscode/
+
+# Secrets / env
+.env
+.env.*
+*.key
+*.pem
+*.p12
+# servicekonton etc
+*.json
+!settings.json   # behåll settings.json i repo om du vill
+
+# OS
+.DS_Store
+Thumbs.db

@@ -3,10 +3,10 @@ import math
 import os
 import re
 import time
-
 import requests
 from dotenv import load_dotenv
 from flask import Flask, flash, redirect, render_template, request, url_for
+from urllib.parse import urlparse, parse_qs, quote  # <-- inkluderar quote för URL-byggaren
 
 from sheets_repo import (
     append_place,
@@ -17,6 +17,44 @@ from sheets_repo import (
     update_place_latlng_by_title,
     update_route_row,
 )
+
+# -----------------------------------------------------------------------------
+# Helpers för Google Maps länkar
+# -----------------------------------------------------------------------------
+def gmaps_directions_url(from_lat, from_lng, to_lat, to_lng):
+    return (
+        "https://www.google.com/maps/dir/?api=1"
+        f"&origin={from_lat},{from_lng}"
+        f"&destination={to_lat},{to_lng}"
+        "&travelmode=driving"
+    )
+
+def gmaps_directions_url_from_params(origin_param: str, destination_param: str, mode: str = "driving") -> str:
+    """
+    Bygg /dir-länk direkt från normaliserade API-parametrar:
+    - 'place_id:ChIJ...' eller
+    - 'lat,lng'
+    Detta är exakt vad Google Maps /dir vill ha.
+    """
+    o = quote(origin_param, safe=",:@")
+    d = quote(destination_param, safe=",:@")
+    return f"https://www.google.com/maps/dir/?api=1&origin={o}&destination={d}&travelmode={mode}"
+
+def gmaps_directions_url_from_embed(embed_url: str) -> str | None:
+    """
+    (Behövs ej längre för knappen, men kvar om du vill parsa embed nånstans.)
+    Bygger en /dir-länk från en v1/directions-embed-URL.
+    """
+    if not embed_url:
+        return None
+    u = urlparse(embed_url)
+    qs = parse_qs(u.query)
+    origin = qs.get("origin", [""])[0]
+    destination = qs.get("destination", [""])[0]
+    mode = qs.get("mode", ["driving"])[0] or "driving"
+    if not origin or not destination:
+        return None
+    return f"https://www.google.com/maps/dir/?api=1&origin={origin}&destination={destination}&travelmode={mode}"
 
 # -----------------------------------------------------------------------------
 # App setup
@@ -36,12 +74,11 @@ SETTINGS_FILE = "settings.json"
 
 @app.after_request
 def add_no_store(resp):
-    """Disable browser/proxy caching so changes are visible immediately."""
+    """Disable browser/proxy caching så ändringar syns direkt."""
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     resp.headers["Pragma"] = "no-cache"
     resp.headers["Expires"] = "0"
     return resp
-
 
 # -----------------------------------------------------------------------------
 # Settings (tariffer lagras lokalt)
@@ -57,22 +94,19 @@ def load_settings():
         }
     }
 
-
 def save_settings(data):
     tmp = SETTINGS_FILE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     os.replace(tmp, SETTINGS_FILE)
 
-
 user_tariffs = load_settings().get("tariffs", {})
 
-
 # -----------------------------------------------------------------------------
-# Helpers
+# Sheets-cache
 # -----------------------------------------------------------------------------
 def make_routes_bidirectional(routes):
-    """Return both directions for each predefined route."""
+    """Returnera båda riktningar för varje fördefinierad rutt."""
     out = []
     seen = set()
     for r in routes:
@@ -95,10 +129,8 @@ def make_routes_bidirectional(routes):
             seen.add(k2)
     return out
 
-
 SHEETS_CACHE = {"routes": [], "places": [], "loaded_at": 0.0}
-SHEETS_TTL = 0  # sek – 0 = alltid färskt från Sheets (vi bustar cache vid POST)
-
+SHEETS_TTL = 0  # sek – 0 = alltid färskt från Sheets (bust vid POST)
 
 def refresh_sheets_cache(force=False):
     now = time.time()
@@ -111,11 +143,9 @@ def refresh_sheets_cache(force=False):
         except Exception as e:
             print("⚠️ Sheets-läsfel:", e)
 
-
 def get_predefined_routes():
     refresh_sheets_cache()
     return make_routes_bidirectional(SHEETS_CACHE["routes"])
-
 
 def get_address_titles_from_sheets():
     refresh_sheets_cache()
@@ -132,9 +162,11 @@ def get_address_titles_from_sheets():
         )
     return out
 
-
+# -----------------------------------------------------------------------------
+# Tariffer
+# -----------------------------------------------------------------------------
 def calculate_derived_tariffs():
-    """Return base + derived discounted tariffs."""
+    """Bas + härledda rabatt-tariffer — NYCKLARNA matchar övrig kod."""
     t1 = user_tariffs.get("Taxa 1 (Småbil)", {"start": 0.0, "km": 0.0, "hour": 0.0})
     t2 = user_tariffs.get("Taxa 2 (Storbils)", {"start": 0.0, "km": 0.0, "hour": 0.0})
     return {
@@ -143,12 +175,12 @@ def calculate_derived_tariffs():
             "km": float(t1["km"]),
             "hour": float(t1["hour"]),
         },
-        "Taxa 2 (Storbil)": {
+        "Taxa 2 (Storbils)": {
             "start": float(t2["start"]),
             "km": float(t2["km"]),
             "hour": float(t2["hour"]),
         },
-        "Taxa 4 (Småbils Rabatt)": {
+        "Taxa 4 (Småbil Rabatt)": {
             "start": round(float(t1["start"]) * 0.83, 2),
             "km": round(float(t1["km"]) * 0.86, 2),
             "hour": round(float(t1["hour"]) * 0.85, 2),
@@ -159,7 +191,6 @@ def calculate_derived_tariffs():
             "hour": round(float(t2["hour"]) * 0.85, 2),
         },
     }
-
 
 # -----------------------------------------------------------------------------
 # Google APIs
@@ -209,7 +240,6 @@ def geocode_address(address: str = None, place_id: str = None):
 
     return None, None, address or ""
 
-
 def get_travel_details(origin_param: str, destination_param: str):
     """
     Directions via Google.
@@ -233,13 +263,11 @@ def get_travel_details(origin_param: str, destination_param: str):
         print("🚨 Tolkningsfel:", e)
     return None, None
 
-
 def generate_static_map_url(origin_param: str, destination_param: str):
-    """Bygg dynamisk Embed-URL. Vi antar normalize/validering redan gjort."""
+    """Bygg Embed-URL för att visa rutten."""
     base = "https://www.google.com/maps/embed/v1/directions"
     url = f"{base}?origin={origin_param}&destination={destination_param}&key={API_KEY}&mode=driving"
     return url, None, None
-
 
 def normalize_endpoints(origin_text, dest_text, origin_pid="", dest_pid=""):
     """
@@ -249,7 +277,6 @@ def normalize_endpoints(origin_text, dest_text, origin_pid="", dest_pid=""):
     """
     def norm(text, pid):
         if pid:
-            # API-param med place_id; display sätter vi separat via geocode (snabbbest effort)
             return f"place_id:{pid}", None
         s = (text or "").strip()
         # lat,lng manuellt?
@@ -263,7 +290,6 @@ def normalize_endpoints(origin_text, dest_text, origin_pid="", dest_pid=""):
     d_api, d_disp = norm(dest_text, dest_pid)
     return o_api, d_api, (o_disp or origin_text), (d_disp or dest_text)
 
-
 # -----------------------------------------------------------------------------
 # Pris/bilar
 # -----------------------------------------------------------------------------
@@ -273,14 +299,12 @@ def calculate_price(duration_min, distance_km, start_cost, km_cost, hourly_cost)
     )
     return round(total)
 
-
 def format_duration(minutes):
     if minutes is None:
         return "–"
     h = int(minutes) // 60
     m = int(minutes) % 60
     return f"{h}h {m}min" if h else f"{m}min"
-
 
 def distribute_cars(passengers: int):
     if passengers <= 0:
@@ -289,7 +313,6 @@ def distribute_cars(passengers: int):
     rem = passengers % 8
     small = math.ceil(rem / 4) if rem > 0 else 0
     return large, small
-
 
 # -----------------------------------------------------------------------------
 # Views
@@ -301,6 +324,7 @@ def index():
     destination = ""
     passenger_count = 0
     tariffs = calculate_derived_tariffs()
+    gmaps_url = None  # sätts per gren
 
     if request.method == "POST":
         origin = request.form.get("origin", "").strip()
@@ -309,9 +333,12 @@ def index():
         dest_pid = (request.form.get("destination_place_id") or "").strip()
         is_fixed = request.form.get("fixed_price") == "1"
 
+        raw = (request.form.get("passengers", "") or "").strip()
         try:
-            passenger_count = int(request.form.get("passengers", 0))
-        except Exception:
+            passenger_count = int(raw)
+        except (TypeError, ValueError):
+            passenger_count = 0
+        if passenger_count < 0:
             passenger_count = 0
 
         # FASTPRIS
@@ -338,7 +365,10 @@ def index():
                     )
 
                 duration, distance = get_travel_details(o_api, d_api)
+
+                # Bygg både embed-karta och klicklänk från SAMMA parametrar
                 map_url, _, _ = generate_static_map_url(o_api, d_api)
+                gmaps_url = gmaps_directions_url_from_params(o_api, d_api)
 
                 rows = []
                 for price in matched.get("prices", []):
@@ -422,7 +452,10 @@ def index():
                             }
                         )
 
+                # Bygg både embed-karta och klicklänk från SAMMA parametrar
                 map_url, _, _ = generate_static_map_url(o_api, d_api)
+                gmaps_url = gmaps_directions_url_from_params(o_api, d_api)
+
                 result = {
                     "origin": o_disp,
                     "destination": d_disp,
@@ -432,6 +465,7 @@ def index():
                     "map_url": map_url,
                 }
 
+    # GET eller POST utan resultat → rendera med gmaps_url (kan vara None)
     return render_template(
         "index.html",
         result=result,
@@ -440,9 +474,12 @@ def index():
         passengers=passenger_count,
         api_key=API_KEY,
         predefined_routes=get_predefined_routes(),
+        gmaps_url=gmaps_url,
     )
 
-
+# -----------------------------------------------------------------------------
+# Settings
+# -----------------------------------------------------------------------------
 @app.route("/settings", methods=["GET", "POST"])
 def settings():
     global user_tariffs
@@ -528,7 +565,7 @@ def settings():
                 or to_place.get("address", "")
             )
 
-            # Förifyll koordinater från platsen (om de redan finns i Places)
+            # Förifyll koordinater från platsen (om de finns i Places)
             flt = from_place.get("lat")
             fln = from_place.get("lng")
             tlt = to_place.get("lat")
@@ -713,7 +750,6 @@ def settings():
         predefined=predefined,
         api_key=API_KEY,
     )
-
 
 # -----------------------------------------------------------------------------
 # Entrypoint
