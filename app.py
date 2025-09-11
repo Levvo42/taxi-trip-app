@@ -307,12 +307,26 @@ def format_duration(minutes):
     return f"{h}h {m}min" if h else f"{m}min"
 
 def distribute_cars(passengers: int):
+    """
+    Fördela bilar med prioritet på storbil (8 platser).
+    Regler:
+    - 0 eller mindre -> 0 bilar
+    - Rester 1–4 -> +1 småbil (4 platser)
+    - Rester 5–7 -> +1 storbil (prioritera storbil)
+    Exempel: 5 -> 1 storbil, 16 -> 2 storbilar, 17 -> 2 stor + 1 liten, 3 -> 1 liten.
+    """
     if passengers <= 0:
         return 0, 0
+
     large = passengers // 8
     rem = passengers % 8
-    small = math.ceil(rem / 4) if rem > 0 else 0
-    return large, small
+
+    if rem == 0:
+        return large, 0
+    if rem <= 4:
+        return large, 1
+    else:  # 5–7
+        return large + 1, 0
 
 # -----------------------------------------------------------------------------
 # Views
